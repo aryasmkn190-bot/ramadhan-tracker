@@ -1,36 +1,163 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌙 Ramadhan Tracker
 
-## Getting Started
+Aplikasi PWA untuk pencatatan aktivitas ibadah harian selama bulan Ramadhan. Dilengkapi dengan fitur komunitas, leaderboard, dan panel admin.
 
-First, run the development server:
+![Ramadhan Tracker](public/icons/icon-192x192.png)
+
+## ✨ Fitur
+
+### Untuk Anggota
+- ✅ **Checklist Ibadah Harian** - Sholat wajib, sunnah, puasa, dzikir
+- 📖 **Progress Tadarus Al-Quran** - Track per juz dan halaman
+- 🏆 **Leaderboard** - Kompetisi tadarus dengan anggota lain
+- 📊 **Statistik Personal** - Lihat progress ibadahmu
+- 📴 **Offline Support** - Tetap bisa digunakan tanpa internet
+- 📲 **PWA** - Install seperti native app
+
+### Untuk Admin
+- 👥 **Kelola Anggota** - Lihat semua anggota komunitas
+- 📢 **Pengumuman** - Kirim pengumuman ke semua anggota
+- 👨‍💼 **Kelola Admin** - Tambah/hapus admin
+- 📈 **Statistik Komunitas** - Lihat progress keseluruhan
+
+## 🚀 Quick Start
+
+### 1. Clone & Install
+
+```bash
+cd ramadhan-tracker
+npm install
+```
+
+### 2. Setup Supabase (untuk fitur komunitas)
+
+1. Buat akun gratis di [supabase.com](https://supabase.com)
+2. Create new project
+3. Buka **SQL Editor** dan jalankan isi file `supabase-schema.sql`
+4. Copy **Project URL** dan **anon key** dari Settings > API
+
+### 3. Konfigurasi Environment
+
+```bash
+cp .env.local.example .env.local
+```
+
+Edit `.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### 4. Jalankan Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### 5. Jadikan Diri Sebagai Admin
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Setelah register akun pertama, jalankan SQL ini di Supabase:
 
-## Learn More
+```sql
+UPDATE profiles SET role = 'admin' WHERE email = 'email-kamu@example.com';
+```
 
-To learn more about Next.js, take a look at the following resources:
+## 📦 Deploy ke Production
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Vercel (Recommended)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Push ke GitHub
+2. Connect repo di [vercel.com](https://vercel.com)
+3. Add environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Deploy!
 
-## Deploy on Vercel
+### Manual Build
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build
+npm start
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📁 Struktur Project
+
+```
+ramadhan-tracker/
+├── app/
+│   ├── components/
+│   │   ├── ActivityCard.js      # Card aktivitas dengan toggle
+│   │   ├── AdminPage.js         # Dashboard admin
+│   │   ├── AuthPage.js          # Modal login/register
+│   │   ├── BottomNav.js         # Navigasi bawah
+│   │   ├── Header.js            # Header dengan info user
+│   │   ├── HistoryPage.js       # Riwayat aktivitas
+│   │   ├── HomePage.js          # Halaman utama
+│   │   ├── LeaderboardPage.js   # Ranking tadarus
+│   │   ├── QuranCard.js         # Card progress Quran
+│   │   ├── QuranPage.js         # Halaman tadarus
+│   │   ├── SettingsPage.js      # Pengaturan
+│   │   ├── StatsCard.js         # Statistik harian
+│   │   └── Toast.js             # Notifikasi toast
+│   ├── contexts/
+│   │   ├── AppContext.js        # State management utama
+│   │   └── AuthContext.js       # Authentication state
+│   ├── lib/
+│   │   └── supabase.js          # Supabase client
+│   ├── globals.css              # Global styles
+│   ├── layout.js                # Root layout
+│   └── page.js                  # Main page
+├── public/
+│   ├── icons/                   # PWA icons
+│   └── manifest.json            # PWA manifest
+├── supabase-schema.sql          # Database schema
+├── .env.local.example           # Env template
+└── next.config.mjs              # Next.js config
+```
+
+## 🗄️ Database Schema
+
+### Tables
+- **profiles** - Data user (id, email, full_name, role)
+- **daily_activities** - Aktivitas harian per user
+- **quran_progress** - Progress tadarus
+- **quran_reading_log** - Log bacaan harian
+- **announcements** - Pengumuman dari admin
+
+### Views
+- **quran_leaderboard** - Ranking tadarus
+- **activity_leaderboard** - Ranking aktivitas
+- **community_stats** - Statistik komunitas
+
+## 🔐 Row Level Security (RLS)
+
+Semua tabel dilindungi dengan RLS:
+- User hanya bisa akses data sendiri
+- Admin bisa view semua data
+- Leaderboard bisa dilihat semua user
+
+## 📱 PWA Features
+
+- ✅ Installable ke home screen
+- ✅ Offline capable dengan service worker
+- ✅ Push notifications (with permission)
+- ✅ Responsive mobile-first design
+
+## 🎨 Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth
+- **Styling**: Vanilla CSS
+- **PWA**: next-pwa
+- **Font**: Outfit (Google Fonts)
+
+## 📄 License
+
+MIT License - Bebas digunakan untuk komunitas
+
+---
+
+🌙 **Selamat Menjalankan Ibadah Ramadhan!** 🌙
