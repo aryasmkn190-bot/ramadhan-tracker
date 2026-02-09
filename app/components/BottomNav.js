@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function BottomNav() {
     const { currentPage, setCurrentPage } = useApp();
-    const { isAdmin, user, isOnlineMode } = useAuth();
+    const { isAdmin } = useAuth();
 
     const navItems = [
         { id: 'home', icon: '🏠', label: 'Beranda' },

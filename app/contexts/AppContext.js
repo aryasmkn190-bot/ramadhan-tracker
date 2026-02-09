@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
 const AppContext = createContext();
@@ -31,10 +31,17 @@ const DEFAULT_ACTIVITIES = [
     { id: 'tadarus', name: 'Tadarus Al-Quran', icon: '📖', time: 'Setelah Subuh/Maghrib', category: 'quran' },
 ];
 
-const RAMADAN_START = new Date('2026-02-18');
+const RAMADAN_START = new Date('2026-02-19');
+
+// Helper to get date string for a specific Ramadan day
+const getDateForRamadanDay = (day) => {
+    const date = new Date(RAMADAN_START);
+    date.setDate(date.getDate() + day - 1);
+    return date.toISOString().split('T')[0];
+};
 
 export function AppProvider({ children }) {
-    const { user, isOnlineMode } = useAuth();
+    const { user } = useAuth();
 
     const [activities, setActivities] = useState({});
     const [quranProgress, setQuranProgress] = useState({ currentJuz: 1, pagesRead: 0 });
@@ -46,90 +53,153 @@ export function AppProvider({ children }) {
     const [communityStats, setCommunityStats] = useState(null);
     const [announcements, setAnnouncements] = useState([]);
 
+    // Selected day for viewing/editing
+    const [selectedRamadanDay, setSelectedRamadanDay] = useState(1);
+
     const today = new Date();
     const todayString = today.toISOString().split('T')[0];
-    const daysSinceRamadan = Math.max(1, Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24)));
-    const currentRamadanDay = Math.min(Math.max(daysSinceRamadan, 1), 30);
+    const daysSinceRamadan = Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24));
+    // Real current day (can be negative if before Ramadan)
+    const currentRamadanDay = daysSinceRamadan + 1;
+    // Clamped for UI defaults (1-30)
+    const clampedRamadanDay = Math.min(Math.max(currentRamadanDay, 1), 30);
 
-    // Load data from Supabase or localStorage
+    const selectedDateString = getDateForRamadanDay(selectedRamadanDay);
+    const isSelectedDayToday = selectedRamadanDay === currentRamadanDay;
+
+    // Initialize selected day
     useEffect(() => {
-        const loadData = async () => {
-            setIsLoading(true);
+        setSelectedRamadanDay(clampedRamadanDay);
+    }, [clampedRamadanDay]);
 
-            if (isOnlineMode && user) {
-                await loadFromSupabase();
-            } else {
-                loadFromLocalStorage();
+    // Load data when user logs in
+    useEffect(() => {
+        let isMounted = true;
+
+        if (user) {
+            loadAllData(isMounted);
+        } else {
+            // Reset state when logged out
+            setActivities({});
+            setQuranProgress({ currentJuz: 1, pagesRead: 0 });
+            setLeaderboard([]);
+            setCommunityStats(null);
+            setAnnouncements([]);
+            setIsLoading(false);
+        }
+
+        return () => {
+            isMounted = false;
+        };
+    }, [user]);
+
+    // Load ALL data in parallel for fast loading
+    const loadAllData = async (isMounted = true) => {
+        setIsLoading(true);
+
+        try {
+            // ESSENTIAL: Load user activities and quran progress only
+            const [activitiesResult, quranResult] = await Promise.all([
+                supabase.from('daily_activities').select('*').eq('user_id', user.id),
+                supabase.from('quran_progress').select('*').eq('user_id', user.id).maybeSingle(),
+            ]);
+
+            if (!isMounted) return;
+
+            // Process activities
+            if (activitiesResult.data) {
+                const allActivities = {};
+                activitiesResult.data.forEach(a => {
+                    if (!allActivities[a.activity_date]) {
+                        allActivities[a.activity_date] = {};
+                    }
+                    allActivities[a.activity_date][a.activity_id] = {
+                        completed: a.completed,
+                        startTime: a.start_time,
+                        endTime: a.end_time,
+                        completedAt: a.completed_at,
+                    };
+                });
+                setActivities(allActivities);
             }
 
-            setIsLoading(false);
-        };
+            // Process Quran progress
+            if (quranResult.data) {
+                setQuranProgress({
+                    currentJuz: quranResult.data.current_juz || 1,
+                    pagesRead: quranResult.data.pages_read || 0,
+                });
+            }
 
-        loadData();
-    }, [user, isOnlineMode]);
-
-    // Load leaderboard and community stats
-    useEffect(() => {
-        if (isOnlineMode && user) {
-            fetchLeaderboard();
-            fetchCommunityStats();
-            fetchAnnouncements();
-        }
-    }, [isOnlineMode, user]);
-
-    const loadFromLocalStorage = () => {
-        try {
-            const savedActivities = localStorage.getItem('ramadhan_activities');
-            const savedQuran = localStorage.getItem('ramadhan_quran');
-            const savedNotifications = localStorage.getItem('ramadhan_notifications');
-
-            if (savedActivities) setActivities(JSON.parse(savedActivities));
-            if (savedQuran) setQuranProgress(JSON.parse(savedQuran));
-            if (savedNotifications !== null) setNotifications(JSON.parse(savedNotifications));
         } catch (error) {
-            console.error('Error loading from localStorage:', error);
+            console.error('Error loading essential data:', error);
+        } finally {
+            // Always finish loading - even if there's an error
+            if (isMounted) {
+                setIsLoading(false);
+            }
         }
+
+        // OPTIONAL: Load community data in background (non-blocking)
+        loadOptionalData();
     };
 
-    const loadFromSupabase = async () => {
+    // Load optional community data in background
+    const loadOptionalData = async () => {
         try {
-            // Load today's activities
-            const { data: activityData } = await supabase
-                .from('daily_activities')
+            const { data: leaderboardData } = await supabase
+                .from('quran_leaderboard')
                 .select('*')
-                .eq('user_id', user.id)
-                .eq('activity_date', todayString);
+                .limit(20);
+            if (leaderboardData) setLeaderboard(leaderboardData);
+        } catch (e) { /* Leaderboard not available */ }
 
+        try {
+            const { data: statsData } = await supabase
+                .from('community_stats')
+                .select('*')
+                .maybeSingle();
+            if (statsData) setCommunityStats(statsData);
+        } catch (e) { /* Stats not available */ }
+
+        try {
+            const { data: announcementsData } = await supabase
+                .from('announcements')
+                .select('*, profiles(full_name)')
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+                .limit(5);
+            if (announcementsData) setAnnouncements(announcementsData);
+        } catch (e) { /* Announcements not available */ }
+    };
+
+    // Load user data only (for revert/refresh after error)
+    const loadUserData = async (isMounted = true) => {
+        try {
+            const { data: activityData } = await supabase.from('daily_activities').select('*').eq('user_id', user.id);
+            if (!isMounted) return;
             if (activityData) {
-                const todayActivities = {};
+                const allActivities = {};
                 activityData.forEach(a => {
-                    todayActivities[a.activity_id] = a.completed;
+                    if (!allActivities[a.activity_date]) {
+                        allActivities[a.activity_date] = {};
+                    }
+                    allActivities[a.activity_date][a.activity_id] = {
+                        completed: a.completed,
+                        startTime: a.start_time,
+                        endTime: a.end_time,
+                        completedAt: a.completed_at,
+                    };
                 });
-                setActivities({ [todayString]: todayActivities });
-            }
-
-            // Load Quran progress
-            const { data: quranData } = await supabase
-                .from('quran_progress')
-                .select('*')
-                .eq('user_id', user.id)
-                .single();
-
-            if (quranData) {
-                setQuranProgress({
-                    currentJuz: quranData.current_juz,
-                    pagesRead: quranData.pages_read,
-                });
+                setActivities(allActivities);
             }
         } catch (error) {
-            console.error('Error loading from Supabase:', error);
-            loadFromLocalStorage();
+            if (error.name === 'AbortError') return;
+            console.error('Error loading user data:', error);
         }
     };
 
     const fetchLeaderboard = async () => {
-        if (!isSupabaseConfigured()) return;
-
         try {
             const { data } = await supabase
                 .from('quran_leaderboard')
@@ -143,8 +213,6 @@ export function AppProvider({ children }) {
     };
 
     const fetchCommunityStats = async () => {
-        if (!isSupabaseConfigured()) return;
-
         try {
             const { data } = await supabase
                 .from('community_stats')
@@ -158,8 +226,6 @@ export function AppProvider({ children }) {
     };
 
     const fetchAnnouncements = async () => {
-        if (!isSupabaseConfigured()) return;
-
         try {
             const { data } = await supabase
                 .from('announcements')
@@ -174,141 +240,212 @@ export function AppProvider({ children }) {
         }
     };
 
-    // Save to localStorage whenever data changes (fallback)
-    useEffect(() => {
-        if (!isLoading) {
-            localStorage.setItem('ramadhan_activities', JSON.stringify(activities));
-            localStorage.setItem('ramadhan_quran', JSON.stringify(quranProgress));
-            localStorage.setItem('ramadhan_notifications', JSON.stringify(notifications));
-        }
-    }, [activities, quranProgress, notifications, isLoading]);
-
-    // Get today's activities
-    const getTodayActivities = useCallback(() => {
-        const todayData = activities[todayString] || {};
+    // Get activities for selected day
+    const getSelectedDayActivities = useCallback(() => {
+        const dayData = activities[selectedDateString] || {};
         const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES];
 
-        return allActivities.map(activity => ({
-            ...activity,
-            completed: todayData[activity.id] || false,
-        }));
-    }, [activities, todayString]);
+        return allActivities.map(activity => {
+            const activityData = dayData[activity.id];
+            const isCompleted = activityData?.completed || false;
+
+            return {
+                ...activity,
+                completed: isCompleted,
+                timeData: activityData || null,
+            };
+        });
+    }, [activities, selectedDateString]);
+
+    // Get time data for a specific activity
+    const getActivityTimeData = useCallback((activityId) => {
+        const dayData = activities[selectedDateString] || {};
+        const activityData = dayData[activityId];
+
+        if (activityData) {
+            return {
+                startTime: activityData.startTime,
+                endTime: activityData.endTime,
+            };
+        }
+        return null;
+    }, [activities, selectedDateString]);
 
     // Toggle activity completion
-    const toggleActivity = useCallback(async (activityId) => {
+    const toggleActivity = useCallback(async (activityId, startTime = null, endTime = null) => {
+        if (!user) {
+            addToast('Silakan login terlebih dahulu', 'error');
+            return;
+        }
+
+        // Prevent filling future dates
+        const today = new Date();
+        const selectedDate = new Date(selectedDateString);
+        // Reset hours to compare dates only
+        today.setHours(0, 0, 0, 0);
+        selectedDate.setHours(0, 0, 0, 0);
+
+        if (selectedDate > today) {
+            addToast('Belum waktunya mengisi hari ini! 🚫', 'error');
+            return;
+        }
+
         const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES];
         const activity = allActivities.find(a => a.id === activityId);
-        const currentlyCompleted = activities[todayString]?.[activityId] || false;
+        const currentData = activities[selectedDateString]?.[activityId];
+        const currentlyCompleted = currentData?.completed || false;
         const newCompleted = !currentlyCompleted;
 
-        // Update local state immediately
+        // Create new activity data
+        const newActivityData = newCompleted ? {
+            completed: true,
+            startTime: startTime || null,
+            endTime: endTime || null,
+            completedAt: new Date().toISOString(),
+        } : null;
+
+        // Optimistic update
         setActivities(prev => ({
             ...prev,
-            [todayString]: {
-                ...prev[todayString],
-                [activityId]: newCompleted,
+            [selectedDateString]: {
+                ...prev[selectedDateString],
+                [activityId]: newActivityData,
             },
         }));
 
-        // Sync to Supabase if online
-        if (isOnlineMode && user) {
-            try {
-                if (newCompleted) {
-                    await supabase.from('daily_activities').upsert({
-                        user_id: user.id,
-                        activity_date: todayString,
-                        activity_id: activityId,
-                        activity_name: activity?.name || activityId,
-                        activity_category: activity?.category || 'other',
-                        completed: true,
-                        completed_at: new Date().toISOString(),
-                    }, {
+        // Sync to Supabase
+        try {
+            if (newCompleted) {
+                const upsertData = {
+                    user_id: user.id,
+                    activity_date: selectedDateString,
+                    activity_id: activityId,
+                    activity_name: activity?.name || activityId,
+                    activity_category: activity?.category || 'other',
+                    completed: true,
+                    completed_at: new Date().toISOString(),
+                    start_time: startTime || null,
+                    end_time: endTime || null,
+                };
+
+                const { error } = await supabase
+                    .from('daily_activities')
+                    .upsert(upsertData, {
                         onConflict: 'user_id,activity_date,activity_id',
                     });
-                } else {
-                    await supabase
-                        .from('daily_activities')
-                        .update({ completed: false, completed_at: null })
-                        .eq('user_id', user.id)
-                        .eq('activity_date', todayString)
-                        .eq('activity_id', activityId);
-                }
-            } catch (error) {
-                console.error('Error syncing activity:', error);
-            }
-        }
 
-        // Show toast
-        if (activity) {
-            addToast(
-                newCompleted ? `✅ ${activity.name} tercatat!` : `↩️ ${activity.name} dibatalkan`,
-                newCompleted ? 'success' : 'info'
-            );
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('daily_activities')
+                    .delete()
+                    .eq('user_id', user.id)
+                    .eq('activity_date', selectedDateString)
+                    .eq('activity_id', activityId);
+
+                if (error) throw error;
+            }
+
+            // Show toast
+            if (activity) {
+                const dayLabel = isSelectedDayToday ? '' : ` (Hari ${selectedRamadanDay})`;
+                let timeInfo = '';
+                if (newCompleted && startTime) {
+                    timeInfo = endTime ? ` ${startTime}-${endTime}` : ` ${startTime}`;
+                }
+                addToast(
+                    newCompleted
+                        ? `✅ ${activity.name}${timeInfo} tercatat!${dayLabel}`
+                        : `↩️ ${activity.name} dibatalkan${dayLabel}`,
+                    newCompleted ? 'success' : 'info'
+                );
+            }
+        } catch (error) {
+            addToast('Gagal menyimpan. Coba lagi.', 'error');
+            loadUserData(true);
         }
-    }, [activities, todayString, isOnlineMode, user]);
+    }, [activities, selectedDateString, selectedRamadanDay, isSelectedDayToday, user]);
 
     // Update Quran progress
     const addPagesRead = useCallback(async (pages) => {
+        if (!user) {
+            addToast('Silakan login terlebih dahulu', 'error');
+            return;
+        }
+
         const newPages = quranProgress.pagesRead + pages;
         const newJuz = Math.min(Math.floor(newPages / 20) + 1, 30);
 
+        // Optimistic update
         setQuranProgress({ currentJuz: newJuz, pagesRead: newPages });
 
-        // Sync to Supabase if online
-        if (isOnlineMode && user) {
-            try {
-                await supabase
-                    .from('quran_progress')
-                    .upsert({
-                        user_id: user.id,
-                        current_juz: newJuz,
-                        pages_read: newPages,
-                        last_read_date: todayString,
-                    }, {
-                        onConflict: 'user_id',
-                    });
-
-                // Also log the reading
-                await supabase.from('quran_reading_log').upsert({
+        try {
+            await supabase
+                .from('quran_progress')
+                .upsert({
                     user_id: user.id,
-                    read_date: todayString,
-                    pages_count: pages,
-                    juz_number: newJuz,
+                    current_juz: newJuz,
+                    pages_read: newPages,
+                    last_read_date: todayString,
                 }, {
-                    onConflict: 'user_id,read_date',
+                    onConflict: 'user_id',
                 });
 
-                // Refresh leaderboard
-                fetchLeaderboard();
-            } catch (error) {
-                console.error('Error syncing Quran progress:', error);
-            }
-        }
+            // Log the reading
+            await supabase.from('quran_reading_log').upsert({
+                user_id: user.id,
+                read_date: todayString,
+                pages_count: pages,
+                juz_number: newJuz,
+            }, {
+                onConflict: 'user_id,read_date',
+            });
 
-        addToast(`📖 +${pages} halaman Al-Quran hari ini!`, 'success');
-    }, [quranProgress, isOnlineMode, user, todayString]);
+            fetchLeaderboard();
+            addToast(`📖 +${pages} halaman Al-Quran!`, 'success');
+        } catch (error) {
+            console.error('Error syncing Quran progress:', error);
+            addToast('Gagal menyimpan. Coba lagi.', 'error');
+            loadUserData();
+        }
+    }, [quranProgress, user, todayString]);
 
     // Calculate stats
     const getStats = useCallback(() => {
-        const todayActivities = getTodayActivities();
-        const completedToday = todayActivities.filter(a => a.completed).length;
-        const totalActivities = todayActivities.length;
+        const dayActivities = getSelectedDayActivities();
+        const completedDay = dayActivities.filter(a => a.completed).length;
+        const totalActivities = dayActivities.length;
 
         let totalCompleted = 0;
         Object.values(activities).forEach(dayData => {
-            totalCompleted += Object.values(dayData).filter(Boolean).length;
+            totalCompleted += Object.values(dayData).filter(a => a?.completed).length;
         });
 
+        // Calculate streak
+        let streak = 0;
+        for (let day = currentRamadanDay; day >= 1; day--) {
+            const dateStr = getDateForRamadanDay(day);
+            const dayData = activities[dateStr] || {};
+            const wajibCompleted = DEFAULT_PRAYERS.every(p => dayData[p.id]?.completed);
+            if (wajibCompleted) {
+                streak++;
+            } else {
+                break;
+            }
+        }
+
         return {
-            completedToday,
+            completedToday: completedDay,
             totalActivities,
-            percentage: Math.round((completedToday / totalActivities) * 100),
+            percentage: Math.round((completedDay / totalActivities) * 100),
             totalCompleted,
             currentDay: currentRamadanDay,
+            selectedDay: selectedRamadanDay,
             quranJuz: quranProgress.currentJuz,
             quranPages: quranProgress.pagesRead,
+            streak,
         };
-    }, [getTodayActivities, activities, currentRamadanDay, quranProgress]);
+    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, quranProgress]);
 
     // Toast management
     const addToast = useCallback((message, type = 'success') => {
@@ -322,14 +459,24 @@ export function AppProvider({ children }) {
     // Get history
     const getHistory = useCallback(() => {
         const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES];
-        return Object.entries(activities)
-            .map(([date, dayData]) => ({
-                date,
-                activities: allActivities.filter(a => dayData[a.id]).map(a => a.name),
-                missed: allActivities.filter(a => !dayData[a.id] && a.category === 'wajib').map(a => a.name),
-            }))
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [activities]);
+        const history = [];
+
+        for (let day = 1; day <= currentRamadanDay; day++) {
+            const dateStr = getDateForRamadanDay(day);
+            const dayData = activities[dateStr] || {};
+
+            history.push({
+                date: dateStr,
+                day,
+                activities: allActivities.filter(a => dayData[a.id]?.completed).map(a => a.name),
+                missed: allActivities.filter(a => !dayData[a.id]?.completed && a.category === 'wajib').map(a => a.name),
+                completedCount: Object.values(dayData).filter(a => a?.completed).length,
+                totalCount: allActivities.length,
+            });
+        }
+
+        return history.reverse();
+    }, [activities, currentRamadanDay]);
 
     // Request notification permission
     const requestNotificationPermission = useCallback(async () => {
@@ -344,27 +491,51 @@ export function AppProvider({ children }) {
         return false;
     }, [addToast]);
 
-    // Reset today's activities
-    const resetToday = useCallback(async () => {
-        setActivities(prev => ({
-            ...prev,
-            [todayString]: {},
-        }));
+    // Reset selected day's activities
+    const resetSelectedDay = useCallback(async () => {
+        if (!user) return;
 
-        if (isOnlineMode && user) {
-            try {
-                await supabase
-                    .from('daily_activities')
-                    .update({ completed: false, completed_at: null })
-                    .eq('user_id', user.id)
-                    .eq('activity_date', todayString);
-            } catch (error) {
-                console.error('Error resetting activities:', error);
-            }
+        try {
+            await supabase
+                .from('daily_activities')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('activity_date', selectedDateString);
+
+            setActivities(prev => ({
+                ...prev,
+                [selectedDateString]: {},
+            }));
+
+            addToast(`🔄 Aktivitas Hari ${selectedRamadanDay} direset`, 'info');
+        } catch (error) {
+            console.error('Error resetting activities:', error);
+            addToast('Gagal mereset. Coba lagi.', 'error');
         }
+    }, [selectedDateString, selectedRamadanDay, user, addToast]);
 
-        addToast('🔄 Aktivitas hari ini direset', 'info');
-    }, [todayString, isOnlineMode, user, addToast]);
+    // Day navigation
+    const goToPreviousDay = useCallback(() => {
+        if (selectedRamadanDay > 1) {
+            setSelectedRamadanDay(prev => prev - 1);
+        }
+    }, [selectedRamadanDay]);
+
+    const goToNextDay = useCallback(() => {
+        if (selectedRamadanDay < currentRamadanDay) {
+            setSelectedRamadanDay(prev => prev + 1);
+        }
+    }, [selectedRamadanDay, currentRamadanDay]);
+
+    const goToDay = useCallback((day) => {
+        if (day >= 1 && day <= currentRamadanDay) {
+            setSelectedRamadanDay(day);
+        }
+    }, [currentRamadanDay]);
+
+    const goToToday = useCallback(() => {
+        setSelectedRamadanDay(currentRamadanDay);
+    }, [currentRamadanDay]);
 
     const value = {
         // State
@@ -375,34 +546,48 @@ export function AppProvider({ children }) {
         toasts,
         isLoading,
         currentRamadanDay,
+        selectedRamadanDay,
+        selectedDateString,
+        isSelectedDayToday,
         todayString,
         leaderboard,
         communityStats,
         announcements,
-        isOnlineMode,
 
         // Setters
         setCurrentPage,
         setNotifications,
+        setSelectedRamadanDay,
+
+        // Navigation
+        goToPreviousDay,
+        goToNextDay,
+        goToDay,
+        goToToday,
 
         // Actions
         toggleActivity,
         addPagesRead,
         addToast,
-        resetToday,
+        resetToday: resetSelectedDay,
         requestNotificationPermission,
         fetchLeaderboard,
         fetchCommunityStats,
+        loadUserData,
 
         // Getters
-        getTodayActivities,
+        getTodayActivities: getSelectedDayActivities,
+        getSelectedDayActivities,
+        getActivityTimeData,
         getStats,
         getHistory,
+        getDateForRamadanDay,
 
         // Constants
         DEFAULT_PRAYERS,
         DEFAULT_SUNNAH,
         DEFAULT_ACTIVITIES,
+        RAMADAN_START,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

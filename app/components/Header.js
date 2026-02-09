@@ -5,14 +5,39 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Header() {
     const { currentRamadanDay, announcements } = useApp();
-    const { user, profile, isOnlineMode } = useAuth();
+    const { user, profile } = useAuth();
 
     const today = new Date();
     const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
     const formattedDate = today.toLocaleDateString('id-ID', options);
 
-    const hijriMonth = 'Ramadhan';
-    const hijriYear = '1447 H';
+    // Determine current state
+    const isRamadanStarted = currentRamadanDay >= 1;
+    let headerSubtitle = '';
+    let dayBadge = '';
+
+    if (isRamadanStarted) {
+        headerSubtitle = `${currentRamadanDay} Ramadhan 1447 H`;
+        dayBadge = `Hari ke-${currentRamadanDay}`;
+    } else {
+        // Calculate days until Ramadan (Feb 19)
+        const ramadanStart = new Date('2026-02-19'); // Updated to Feb 19
+        // Reset hours to compare dates properly
+        const todayReset = new Date(today);
+        todayReset.setHours(0, 0, 0, 0);
+
+        const diffTime = ramadanStart - todayReset;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays > 0) {
+            headerSubtitle = `${diffDays} hari menuju Ramadhan`;
+            dayBadge = `H-${diffDays}`;
+        } else {
+            // Fallback for edge cases
+            headerSubtitle = formattedDate;
+            dayBadge = 'Siap Ramadhan';
+        }
+    }
 
     return (
         <header className="header">
@@ -21,11 +46,11 @@ export default function Header() {
                     <span className="header-icon">🌙</span>
                     <div>
                         <h1>Ramadhan Tracker</h1>
-                        <p className="header-date">{formattedDate} • {currentRamadanDay} {hijriMonth} {hijriYear}</p>
+                        <p className="header-date">{formattedDate} • {headerSubtitle}</p>
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {isOnlineMode && user && (
+                    {user && (
                         <div style={{
                             width: '36px',
                             height: '36px',
@@ -43,7 +68,7 @@ export default function Header() {
                         </div>
                     )}
                     <div className="stats-day-badge">
-                        Hari ke-{currentRamadanDay}
+                        {dayBadge}
                     </div>
                 </div>
             </div>

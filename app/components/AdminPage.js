@@ -7,7 +7,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export default function AdminPage() {
     const { isAdmin, user } = useAuth();
-    const { addToast, isOnlineMode } = useApp();
+    const { addToast } = useApp();
 
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -17,13 +17,13 @@ export default function AdminPage() {
     const [stats, setStats] = useState(null);
 
     useEffect(() => {
-        if (isAdmin && isOnlineMode) {
+        if (isAdmin) {
             fetchMembers();
             fetchAdminStats();
         } else {
             setLoading(false);
         }
-    }, [isAdmin, isOnlineMode]);
+    }, [isAdmin]);
 
     const fetchMembers = async () => {
         if (!isSupabaseConfigured()) return;
@@ -121,18 +121,6 @@ export default function AdminPage() {
             addToast('❌ Gagal mengubah role', 'error');
         }
     };
-
-    if (!isOnlineMode) {
-        return (
-            <main className="main-content">
-                <div className="empty-state" style={{ marginTop: '40px' }}>
-                    <div className="empty-icon">📴</div>
-                    <div className="empty-title">Mode Offline</div>
-                    <div className="empty-desc">Fitur admin hanya tersedia dalam mode online</div>
-                </div>
-            </main>
-        );
-    }
 
     if (!isAdmin) {
         return (

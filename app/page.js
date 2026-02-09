@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppProvider, useApp } from './contexts/AppContext';
 import Header from './components/Header';
@@ -15,26 +14,11 @@ import AuthPage from './components/AuthPage';
 import Toast from './components/Toast';
 
 function AppContent() {
-  const { currentPage, isLoading: appLoading, isOnlineMode } = useApp();
-  const { user, loading: authLoading, isOnlineMode: authOnlineMode } = useAuth();
-  const [showAuth, setShowAuth] = useState(false);
+  const { currentPage, isLoading: appLoading } = useApp();
+  const { user, loading: authLoading } = useAuth();
 
-  // Show auth modal if online mode is available but user is not logged in
-  useEffect(() => {
-    if (authOnlineMode && !authLoading && !user) {
-      // Small delay to let the app load first
-      const timer = setTimeout(() => {
-        setShowAuth(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setShowAuth(false);
-    }
-  }, [authOnlineMode, authLoading, user]);
-
-  const isLoading = appLoading || authLoading;
-
-  if (isLoading) {
+  // Show loading state
+  if (authLoading) {
     return (
       <div style={{
         display: 'flex',
@@ -42,10 +26,34 @@ function AppContent() {
         justifyContent: 'center',
         minHeight: '100vh',
         flexDirection: 'column',
-        gap: '16px'
+        gap: '16px',
+        background: 'var(--dark-900)',
       }}>
         <div style={{ fontSize: '48px', animation: 'pulse 1.5s ease-in-out infinite' }}>🌙</div>
         <div style={{ color: 'var(--dark-300)', fontSize: '14px' }}>Memuat...</div>
+      </div>
+    );
+  }
+
+  // If not logged in, show auth page (required)
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  // Show loading for app data
+  if (appLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        flexDirection: 'column',
+        gap: '16px',
+        background: 'var(--dark-900)',
+      }}>
+        <div style={{ fontSize: '48px', animation: 'pulse 1.5s ease-in-out infinite' }}>🌙</div>
+        <div style={{ color: 'var(--dark-300)', fontSize: '14px' }}>Memuat data...</div>
       </div>
     );
   }
@@ -75,11 +83,6 @@ function AppContent() {
       {renderPage()}
       <BottomNav />
       <Toast />
-
-      {/* Auth Modal */}
-      {showAuth && (
-        <AuthPage onClose={() => setShowAuth(false)} />
-      )}
     </>
   );
 }

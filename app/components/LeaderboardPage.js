@@ -4,32 +4,8 @@ import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LeaderboardPage() {
-    const { leaderboard, communityStats, fetchLeaderboard, isOnlineMode } = useApp();
+    const { leaderboard, communityStats, fetchLeaderboard } = useApp();
     const { user, profile } = useAuth();
-
-    if (!isOnlineMode) {
-        return (
-            <main className="main-content">
-                <div className="empty-state" style={{ marginTop: '40px' }}>
-                    <div className="empty-icon">📴</div>
-                    <div className="empty-title">Mode Offline</div>
-                    <div className="empty-desc">Login untuk melihat leaderboard komunitas</div>
-                </div>
-            </main>
-        );
-    }
-
-    if (!user) {
-        return (
-            <main className="main-content">
-                <div className="empty-state" style={{ marginTop: '40px' }}>
-                    <div className="empty-icon">🔐</div>
-                    <div className="empty-title">Login Diperlukan</div>
-                    <div className="empty-desc">Masuk untuk melihat leaderboard komunitas</div>
-                </div>
-            </main>
-        );
-    }
 
     return (
         <main className="main-content">

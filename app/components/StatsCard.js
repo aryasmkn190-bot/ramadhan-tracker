@@ -3,13 +3,15 @@
 import { useApp } from '../contexts/AppContext';
 
 export default function StatsCard() {
-    const { getStats, currentRamadanDay } = useApp();
+    const { getStats, selectedRamadanDay, isSelectedDayToday } = useApp();
     const stats = getStats();
 
     return (
         <div className="stats-card">
             <div className="stats-header">
-                <span className="stats-title">Progress Hari Ini</span>
+                <span className="stats-title">
+                    {isSelectedDayToday ? 'Progress Hari Ini' : `Progress Hari ${selectedRamadanDay}`}
+                </span>
                 <span className="stats-day-badge">
                     {stats.percentage}% Tercapai
                 </span>
@@ -24,8 +26,8 @@ export default function StatsCard() {
                     <div className="stat-label">Juz Quran</div>
                 </div>
                 <div className="stat-item">
-                    <div className="stat-value">{currentRamadanDay}</div>
-                    <div className="stat-label">Hari Ramadhan</div>
+                    <div className="stat-value">{stats.streak || 0}</div>
+                    <div className="stat-label">Streak 🔥</div>
                 </div>
             </div>
         </div>

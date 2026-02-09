@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function AuthPage({ onClose }) {
-    const { signIn, signUp } = useAuth();
+export default function AuthPage() {
+    const { signIn, signUp, configError } = useAuth();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -42,16 +42,51 @@ export default function AuthPage({ onClose }) {
         setLoading(false);
     };
 
-    return (
-        <div className="modal-overlay active" onClick={onClose}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh' }}>
-                <div className="modal-handle"></div>
+    // Show config error if Supabase is not configured
+    if (configError) {
+        return (
+            <div className="auth-fullscreen">
+                <div className="auth-container">
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+                        <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)', marginBottom: '8px' }}>
+                            Konfigurasi Error
+                        </h2>
+                        <p style={{ fontSize: '14px', color: 'var(--dark-400)', lineHeight: 1.6 }}>
+                            {configError}
+                        </p>
+                    </div>
+                </div>
+                <style jsx>{`
+          .auth-fullscreen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--dark-900);
+            padding: 20px;
+          }
+          .auth-container {
+            width: 100%;
+            max-width: 400px;
+            background: var(--dark-800);
+            border-radius: var(--radius-lg);
+            padding: 32px 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+          }
+        `}</style>
+            </div>
+        );
+    }
 
+    return (
+        <div className="auth-fullscreen">
+            <div className="auth-container">
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                     <div style={{ fontSize: '48px', marginBottom: '12px' }}>🌙</div>
                     <h2 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--dark-100)', marginBottom: '4px' }}>
-                        {isLogin ? 'Selamat Datang Kembali' : 'Daftar Akun Baru'}
+                        {isLogin ? 'Selamat Datang' : 'Daftar Akun Baru'}
                     </h2>
                     <p style={{ fontSize: '13px', color: 'var(--dark-400)' }}>
                         {isLogin ? 'Masuk untuk melanjutkan ibadahmu' : 'Bergabung dengan komunitas Ramadhan'}
@@ -100,29 +135,13 @@ export default function AuthPage({ onClose }) {
                     </div>
 
                     {error && (
-                        <div style={{
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: 'var(--radius-md)',
-                            padding: '12px',
-                            marginBottom: '16px',
-                            fontSize: '13px',
-                            color: '#f87171',
-                        }}>
+                        <div className="alert alert-error">
                             ❌ {error}
                         </div>
                     )}
 
                     {success && (
-                        <div style={{
-                            background: 'rgba(34, 197, 94, 0.15)',
-                            border: '1px solid rgba(34, 197, 94, 0.3)',
-                            borderRadius: 'var(--radius-md)',
-                            padding: '12px',
-                            marginBottom: '16px',
-                            fontSize: '13px',
-                            color: '#4ade80',
-                        }}>
+                        <div className="alert alert-success">
                             ✅ {success}
                         </div>
                     )}
@@ -168,26 +187,98 @@ export default function AuthPage({ onClose }) {
                         </button>
                     </p>
                 </div>
-
-                {/* Skip for offline mode */}
-                <button
-                    type="button"
-                    onClick={onClose}
-                    style={{
-                        marginTop: '20px',
-                        width: '100%',
-                        padding: '12px',
-                        background: 'transparent',
-                        border: '1px solid var(--dark-600)',
-                        borderRadius: 'var(--radius-md)',
-                        color: 'var(--dark-400)',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                    }}
-                >
-                    Lanjutkan tanpa login (Mode Offline)
-                </button>
             </div>
+
+            <style jsx>{`
+        .auth-fullscreen {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, var(--dark-900) 0%, #0a1628 100%);
+          padding: 20px;
+        }
+        .auth-container {
+          width: 100%;
+          max-width: 400px;
+          background: var(--dark-800);
+          border-radius: var(--radius-lg);
+          padding: 32px 24px;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+          border: 1px solid var(--dark-700);
+        }
+        .form-group {
+          margin-bottom: 16px;
+        }
+        .form-label {
+          display: block;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--dark-300);
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .form-input {
+          width: 100%;
+          padding: 12px 16px;
+          background: var(--dark-700);
+          border: 2px solid var(--dark-600);
+          border-radius: var(--radius-md);
+          color: var(--dark-100);
+          font-size: 14px;
+          transition: all 0.2s ease;
+        }
+        .form-input:focus {
+          outline: none;
+          border-color: var(--emerald-500);
+          box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+        }
+        .form-input::placeholder {
+          color: var(--dark-500);
+        }
+        .alert {
+          border-radius: var(--radius-md);
+          padding: 12px;
+          margin-bottom: 16px;
+          font-size: 13px;
+        }
+        .alert-error {
+          background: rgba(239, 68, 68, 0.15);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #f87171;
+        }
+        .alert-success {
+          background: rgba(34, 197, 94, 0.15);
+          border: 1px solid rgba(34, 197, 94, 0.3);
+          color: #4ade80;
+        }
+        .btn {
+          width: 100%;
+          padding: 14px;
+          border-radius: var(--radius-md);
+          font-weight: 600;
+          font-size: 14px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s ease;
+          border: none;
+        }
+        .btn-primary {
+          background: var(--primary-gradient);
+          color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+          transform: scale(1.02);
+        }
+        .btn-primary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      `}</style>
         </div>
     );
 }

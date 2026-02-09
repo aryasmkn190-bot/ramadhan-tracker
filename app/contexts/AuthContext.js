@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const AuthContext = createContext();
@@ -9,29 +9,73 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [isOnlineMode, setIsOnlineMode] = useState(false);
+    const [configError, setConfigError] = useState(null);
+    const mountedRef = useRef(true);
+    const loadingSetRef = useRef(false);
+
+    // Helper to safely set loading to false only once
+    const finishLoading = () => {
+        if (!loadingSetRef.current && mountedRef.current) {
+            loadingSetRef.current = true;
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        setIsOnlineMode(isSupabaseConfigured());
+        mountedRef.current = true;
+        loadingSetRef.current = false;
 
+        // Check if Supabase is configured
         if (!isSupabaseConfigured()) {
-            setLoading(false);
+            setConfigError('Supabase belum dikonfigurasi. Hubungi administrator.');
+            finishLoading();
             return;
         }
 
-        // Check current session
+        // Fallback timeout - force loading after 2 seconds
+        const guaranteedTimeout = setTimeout(() => {
+            finishLoading();
+        }, 2000);
+
+        // Check current session with race timeout
         const checkSession = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                // Race between getSession and a 1.5s timeout
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise((resolve) =>
+                    setTimeout(() => resolve({ data: { session: null }, timedOut: true }), 1500)
+                );
+
+                const result = await Promise.race([sessionPromise, timeoutPromise]);
+
+                if (result.timedOut) {
+                    finishLoading();
+                    return;
+                }
+
+                const { data: { session }, error } = result;
+
+                if (!mountedRef.current) return;
+
+                if (error) {
+                    console.error('Session error:', error);
+                    finishLoading();
+                    return;
+                }
+
                 setUser(session?.user ?? null);
 
+                // Skip profile fetch on initial load - just show the app
+                // Profile will be fetched in background
                 if (session?.user) {
-                    await fetchProfile(session.user.id);
+                    fetchProfileInBackground(session.user.id);
                 }
+
+                finishLoading();
             } catch (error) {
+                if (error.name === 'AbortError') return;
                 console.error('Error checking session:', error);
-            } finally {
-                setLoading(false);
+                finishLoading();
             }
         };
 
@@ -40,39 +84,49 @@ export function AuthProvider({ children }) {
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
+                if (!mountedRef.current) return;
+
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    await fetchProfile(session.user.id);
+                    fetchProfileInBackground(session.user.id);
                 } else {
                     setProfile(null);
                 }
             }
         );
 
-        return () => subscription.unsubscribe();
+        return () => {
+            clearTimeout(guaranteedTimeout);
+            mountedRef.current = false;
+            subscription?.unsubscribe();
+        };
     }, []);
 
-    const fetchProfile = async (userId) => {
+    // Fetch profile in background - don't block loading
+    const fetchProfileInBackground = async (userId) => {
         try {
             const { data, error } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
-                .single();
+                .maybeSingle();
 
-            if (error) throw error;
-            setProfile(data);
+            if (!mountedRef.current) return;
+
+            if (data) {
+                setProfile(data);
+            }
         } catch (error) {
-            console.error('Error fetching profile:', error);
+            // Profile fetch failed - non-blocking
         }
     };
 
-    const signUp = async (email, password, fullName) => {
-        if (!isSupabaseConfigured()) {
-            return { error: { message: 'Supabase not configured' } };
-        }
+    const fetchProfile = async (userId) => {
+        await fetchProfileInBackground(userId);
+    };
 
+    const signUp = async (email, password, fullName) => {
         try {
             const { data, error } = await supabase.auth.signUp({
                 email,
@@ -92,10 +146,6 @@ export function AuthProvider({ children }) {
     };
 
     const signIn = async (email, password) => {
-        if (!isSupabaseConfigured()) {
-            return { error: { message: 'Supabase not configured' } };
-        }
-
         try {
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
@@ -110,8 +160,6 @@ export function AuthProvider({ children }) {
     };
 
     const signOut = async () => {
-        if (!isSupabaseConfigured()) return;
-
         try {
             await supabase.auth.signOut();
             setUser(null);
@@ -122,7 +170,9 @@ export function AuthProvider({ children }) {
     };
 
     const updateProfile = async (updates) => {
-        if (!isSupabaseConfigured() || !user) return { error: { message: 'Not authenticated' } };
+        if (!user) {
+            return { error: { message: 'Tidak terautentikasi' } };
+        }
 
         try {
             const { data, error } = await supabase
@@ -146,7 +196,7 @@ export function AuthProvider({ children }) {
         user,
         profile,
         loading,
-        isOnlineMode,
+        configError,
         isAdmin,
         signUp,
         signIn,

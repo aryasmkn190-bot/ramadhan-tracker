@@ -11,7 +11,6 @@ export default function SettingsPage() {
         requestNotificationPermission,
         resetToday,
         addToast,
-        isOnlineMode,
     } = useApp();
 
     const { user, profile, signOut, isAdmin } = useAuth();
@@ -120,17 +119,15 @@ export default function SettingsPage() {
         },
     ];
 
-    // Add logout if user is logged in
-    if (isOnlineMode && user) {
-        settingsItems.push({
-            icon: '🚪',
-            label: 'Logout',
-            desc: 'Keluar dari akun',
-            action: 'chevron',
-            onClick: () => setShowLogoutModal(true),
-            danger: true,
-        });
-    }
+    // Add logout option (always shown since user is always logged in)
+    settingsItems.push({
+        icon: '🚪',
+        label: 'Logout',
+        desc: 'Keluar dari akun',
+        action: 'chevron',
+        onClick: () => setShowLogoutModal(true),
+        danger: true,
+    });
 
     return (
         <main className="main-content">
@@ -184,18 +181,18 @@ export default function SettingsPage() {
                     alignItems: 'center',
                     gap: '6px',
                     padding: '6px 12px',
-                    background: isOnlineMode && user ? 'rgba(34, 197, 94, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+                    background: 'rgba(34, 197, 94, 0.15)',
                     borderRadius: 'var(--radius-full)',
                     fontSize: '12px',
-                    color: isOnlineMode && user ? 'var(--success)' : 'var(--gold-400)',
+                    color: 'var(--success)',
                 }}>
                     <span style={{
                         width: '8px',
                         height: '8px',
                         borderRadius: '50%',
-                        background: isOnlineMode && user ? 'var(--success)' : 'var(--gold-400)',
+                        background: 'var(--success)',
                     }}></span>
-                    {isOnlineMode && user ? 'Tersinkron Online' : 'Mode Offline'}
+                    Tersinkron Online
                 </div>
             </div>
 
@@ -283,12 +280,8 @@ export default function SettingsPage() {
                         gap: '24px'
                     }}>
                         <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px' }}>💚</div>
+                            <div style={{ fontSize: '24px' }}>📚</div>
                             <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>PWA Ready</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px' }}>📴</div>
-                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>Offline</div>
                         </div>
                         <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '24px' }}>☁️</div>
@@ -297,6 +290,10 @@ export default function SettingsPage() {
                         <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '24px' }}>🏆</div>
                             <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>Leaderboard</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '24px' }}>👥</div>
+                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>Komunitas</div>
                         </div>
                     </div>
                 </div>
