@@ -9,13 +9,17 @@ import QuranPage from './components/QuranPage';
 import HistoryPage from './components/HistoryPage';
 import SettingsPage from './components/SettingsPage';
 import LeaderboardPage from './components/LeaderboardPage';
-import AdminPage from './components/AdminPage';
+import AdminDashboardPage from './components/AdminDashboardPage';
+import AdminMembersPage from './components/AdminMembersPage';
+import AdminActivitiesPage from './components/AdminActivitiesPage';
+import AdminAnnouncementsPage from './components/AdminAnnouncementsPage';
 import AuthPage from './components/AuthPage';
+import RekapPage from './components/RekapPage';
 import Toast from './components/Toast';
 
 function AppContent() {
   const { currentPage, isLoading: appLoading } = useApp();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAdmin } = useAuth();
 
   // Show loading state
   if (authLoading) {
@@ -59,6 +63,26 @@ function AppContent() {
   }
 
   const renderPage = () => {
+    // Admin-specific pages
+    if (isAdmin) {
+      switch (currentPage) {
+        case 'admin_dashboard':
+          return <AdminDashboardPage />;
+        case 'admin_members':
+          return <AdminMembersPage />;
+        case 'admin_activities':
+          return <AdminActivitiesPage />;
+        case 'admin_announcements':
+          return <AdminAnnouncementsPage />;
+        case 'settings':
+          return <SettingsPage />;
+        // If admin navigates to old pages, redirect to dashboard
+        default:
+          return <AdminDashboardPage />;
+      }
+    }
+
+    // Regular user pages
     switch (currentPage) {
       case 'home':
         return <HomePage />;
@@ -70,8 +94,8 @@ function AppContent() {
         return <SettingsPage />;
       case 'leaderboard':
         return <LeaderboardPage />;
-      case 'admin':
-        return <AdminPage />;
+      case 'rekap':
+        return <RekapPage />;
       default:
         return <HomePage />;
     }

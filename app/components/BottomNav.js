@@ -7,17 +7,24 @@ export default function BottomNav() {
     const { currentPage, setCurrentPage } = useApp();
     const { isAdmin } = useAuth();
 
-    const navItems = [
+    // Admin has a completely different navigation
+    const navItems = isAdmin ? [
+        { id: 'admin_dashboard', icon: '📊', label: 'Dashboard' },
+        { id: 'admin_members', icon: '👥', label: 'Anggota' },
+        { id: 'admin_activities', icon: '📋', label: 'Aktivitas' },
+        { id: 'admin_announcements', icon: '📢', label: 'Pengumuman' },
+        { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
+    ] : [
         { id: 'home', icon: '🏠', label: 'Beranda' },
         { id: 'quran', icon: '📖', label: 'Quran' },
-        { id: 'leaderboard', icon: '🏆', label: 'Ranking' },
+        { id: 'rekap', icon: '📊', label: 'Rekap' },
         { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
     ];
 
-    // Add admin tab if user is admin
-    if (isAdmin) {
-        navItems.splice(3, 0, { id: 'admin', icon: '👨‍💼', label: 'Admin' });
-    }
+    // For admin, if currentPage doesn't match any admin nav, treat 'admin_dashboard' as active
+    const activeId = isAdmin
+        ? (navItems.some(n => n.id === currentPage) ? currentPage : 'admin_dashboard')
+        : currentPage;
 
     return (
         <nav className="bottom-nav">
@@ -27,7 +34,7 @@ export default function BottomNav() {
                 {navItems.map((item) => (
                     <button
                         key={item.id}
-                        className={`nav-item ripple ${currentPage === item.id ? 'active' : ''}`}
+                        className={`nav-item ripple ${activeId === item.id ? 'active' : ''}`}
                         onClick={() => setCurrentPage(item.id)}
                     >
                         <span className="nav-icon">{item.icon}</span>

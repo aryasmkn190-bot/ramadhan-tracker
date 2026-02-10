@@ -126,7 +126,7 @@ export function AuthProvider({ children }) {
         await fetchProfileInBackground(userId);
     };
 
-    const signUp = async (email, password, fullName) => {
+    const signUp = async (email, password, fullName, userGroup) => {
         try {
             const { data, error } = await supabase.auth.signUp({
                 email,
@@ -134,11 +134,27 @@ export function AuthProvider({ children }) {
                 options: {
                     data: {
                         full_name: fullName,
+                        user_group: userGroup,
                     },
                 },
             });
 
             if (error) throw error;
+
+            // If sign up succeeded and we have a user, update their profile with the group
+            if (data?.user) {
+                await supabase
+                    .from('profiles')
+                    .upsert({
+                        id: data.user.id,
+                        full_name: fullName,
+                        user_group: userGroup,
+                        email: email,
+                    }, {
+                        onConflict: 'id',
+                    });
+            }
+
             return { data, error: null };
         } catch (error) {
             return { data: null, error };

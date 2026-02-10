@@ -41,18 +41,39 @@ const getDateForRamadanDay = (day) => {
 };
 
 export function AppProvider({ children }) {
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
 
     const [activities, setActivities] = useState({});
     const [quranProgress, setQuranProgress] = useState({ currentJuz: 1, pagesRead: 0 });
     const [notifications, setNotifications] = useState(true);
-    const [currentPage, setCurrentPage] = useState('home');
+    const [currentPage, setCurrentPageState] = useState('home');
     const [toasts, setToasts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [leaderboard, setLeaderboard] = useState([]);
     const [communityStats, setCommunityStats] = useState(null);
     const [announcements, setAnnouncements] = useState([]);
+    const [customActivities, setCustomActivities] = useState([]);
 
+    // Valid pages for persistence
+    const VALID_PAGES = ['home', 'quran', 'rekap', 'leaderboard', 'settings', 'admin', 'admin_dashboard', 'admin_members', 'admin_activities', 'admin_announcements'];
+
+    // Wrapper: save currentPage to localStorage on change
+    const setCurrentPage = useCallback((page) => {
+        setCurrentPageState(page);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('ramadhan_current_page', page);
+        }
+    }, []);
+
+    // Restore saved page on mount (client-side only)
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedPage = localStorage.getItem('ramadhan_current_page');
+            if (savedPage && VALID_PAGES.includes(savedPage)) {
+                setCurrentPageState(savedPage);
+            }
+        }
+    }, []);
     // Selected day for viewing/editing
     const [selectedRamadanDay, setSelectedRamadanDay] = useState(1);
 
@@ -67,10 +88,27 @@ export function AppProvider({ children }) {
     const selectedDateString = getDateForRamadanDay(selectedRamadanDay);
     const isSelectedDayToday = selectedRamadanDay === currentRamadanDay;
 
-    // Initialize selected day
+    // Initialize selected day (client-side only)
     useEffect(() => {
-        setSelectedRamadanDay(clampedRamadanDay);
-    }, [clampedRamadanDay]);
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('ramadhan_last_viewed_day');
+            if (saved) {
+                const parsedDay = parseInt(saved);
+                if (parsedDay >= 1 && parsedDay <= 30) {
+                    setSelectedRamadanDay(parsedDay);
+                    return;
+                }
+            }
+            setSelectedRamadanDay(clampedRamadanDay);
+        }
+    }, []); // Run only once on mount
+
+    // Save selected day whenever it changes (client-side only)
+    useEffect(() => {
+        if (typeof window !== 'undefined' && selectedRamadanDay >= 1 && selectedRamadanDay <= 30) {
+            localStorage.setItem('ramadhan_last_viewed_day', selectedRamadanDay.toString());
+        }
+    }, [selectedRamadanDay]);
 
     // Load data when user logs in
     useEffect(() => {
@@ -91,7 +129,7 @@ export function AppProvider({ children }) {
         return () => {
             isMounted = false;
         };
-    }, [user]);
+    }, [user, profile?.user_group]);
 
     // Load ALL data in parallel for fast loading
     const loadAllData = async (isMounted = true) => {
@@ -118,6 +156,7 @@ export function AppProvider({ children }) {
                         startTime: a.start_time,
                         endTime: a.end_time,
                         completedAt: a.completed_at,
+                        added: a.added || false,
                     };
                 });
                 setActivities(allActivities);
@@ -171,6 +210,47 @@ export function AppProvider({ children }) {
                 .limit(5);
             if (announcementsData) setAnnouncements(announcementsData);
         } catch (e) { /* Announcements not available */ }
+
+        // Load custom activities from admin
+        try {
+            const { data: customData, error: customError } = await supabase
+                .from('custom_activities')
+                .select('*')
+                .eq('is_active', true)
+                .order('category', { ascending: true });
+
+            console.log('Custom activities fetch result:', { customData, customError });
+
+            if (customError) {
+                console.error('Error fetching custom activities:', customError);
+            }
+
+            if (customData && customData.length > 0) {
+                // Filter by user's group
+                const userGroup = profile?.user_group;
+                const filteredCustom = customData.filter(item => {
+                    // If target_groups is null or empty, show to everyone
+                    if (!item.target_groups || item.target_groups.length === 0) return true;
+                    // If user has a group, check if it matches
+                    if (userGroup && item.target_groups.includes(userGroup)) return true;
+                    // If user has no group, only show activities with no target
+                    return false;
+                });
+
+                const formatted = filteredCustom.map(item => ({
+                    id: `custom_${item.id}`,
+                    name: item.name,
+                    icon: item.icon || '📌',
+                    category: item.category,
+                    description: item.description,
+                    isCustom: true,
+                }));
+                console.log('Formatted custom activities:', formatted);
+                setCustomActivities(formatted);
+            }
+        } catch (e) {
+            console.error('Custom activities error:', e);
+        }
     };
 
     // Load user data only (for revert/refresh after error)
@@ -225,6 +305,32 @@ export function AppProvider({ children }) {
         }
     };
 
+    const fetchCustomActivities = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('custom_activities')
+                .select('*')
+                .eq('is_active', true)
+                .order('category', { ascending: true });
+
+            if (error) throw error;
+            if (data) {
+                // Transform to match activity format
+                const formatted = data.map(item => ({
+                    id: `custom_${item.id}`,
+                    name: item.name,
+                    icon: item.icon || '📌',
+                    category: item.category,
+                    description: item.description,
+                    isCustom: true,
+                }));
+                setCustomActivities(formatted);
+            }
+        } catch (error) {
+            console.error('Error fetching custom activities:', error);
+        }
+    };
+
     const fetchAnnouncements = async () => {
         try {
             const { data } = await supabase
@@ -240,10 +346,17 @@ export function AppProvider({ children }) {
         }
     };
 
-    // Get activities for selected day
+    // Get custom activities that user has added for the selected day
+    const getAddedCustomActivitiesForDay = useCallback((dateStr) => {
+        const dayData = activities[dateStr || selectedDateString] || {};
+        return customActivities.filter(ca => dayData[ca.id]?.added);
+    }, [activities, selectedDateString, customActivities]);
+
+    // Get activities for selected day (only includes custom activities user explicitly added)
     const getSelectedDayActivities = useCallback(() => {
         const dayData = activities[selectedDateString] || {};
-        const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES];
+        const addedCustom = getAddedCustomActivitiesForDay();
+        const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...addedCustom];
 
         return allActivities.map(activity => {
             const activityData = dayData[activity.id];
@@ -255,7 +368,7 @@ export function AppProvider({ children }) {
                 timeData: activityData || null,
             };
         });
-    }, [activities, selectedDateString]);
+    }, [activities, selectedDateString, getAddedCustomActivitiesForDay]);
 
     // Get time data for a specific activity
     const getActivityTimeData = useCallback((activityId) => {
@@ -278,31 +391,34 @@ export function AppProvider({ children }) {
             return;
         }
 
-        // Prevent filling future dates
-        const today = new Date();
-        const selectedDate = new Date(selectedDateString);
-        // Reset hours to compare dates only
-        today.setHours(0, 0, 0, 0);
-        selectedDate.setHours(0, 0, 0, 0);
+        // Validation removed: Users can fill any day (honesty system)
 
-        if (selectedDate > today) {
-            addToast('Belum waktunya mengisi hari ini! 🚫', 'error');
-            return;
-        }
-
-        const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES];
+        const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
         const activity = allActivities.find(a => a.id === activityId);
         const currentData = activities[selectedDateString]?.[activityId];
         const currentlyCompleted = currentData?.completed || false;
         const newCompleted = !currentlyCompleted;
+        const isCustom = activity?.isCustom || false;
 
         // Create new activity data
-        const newActivityData = newCompleted ? {
-            completed: true,
-            startTime: startTime || null,
-            endTime: endTime || null,
-            completedAt: new Date().toISOString(),
-        } : null;
+        let newActivityData;
+        if (newCompleted) {
+            newActivityData = {
+                completed: true,
+                startTime: startTime || null,
+                endTime: endTime || null,
+                completedAt: new Date().toISOString(),
+                added: currentData?.added || isCustom, // preserve added flag
+            };
+        } else if (isCustom) {
+            // Custom activity: keep it added but uncompleted
+            newActivityData = {
+                completed: false,
+                added: true,
+            };
+        } else {
+            newActivityData = null;
+        }
 
         // Optimistic update
         setActivities(prev => ({
@@ -326,11 +442,29 @@ export function AppProvider({ children }) {
                     completed_at: new Date().toISOString(),
                     start_time: startTime || null,
                     end_time: endTime || null,
+                    added: isCustom ? true : false,
                 };
 
                 const { error } = await supabase
                     .from('daily_activities')
                     .upsert(upsertData, {
+                        onConflict: 'user_id,activity_date,activity_id',
+                    });
+
+                if (error) throw error;
+            } else if (isCustom) {
+                // Custom activity: update to uncompleted but keep the row (added=true)
+                const { error } = await supabase
+                    .from('daily_activities')
+                    .upsert({
+                        user_id: user.id,
+                        activity_date: selectedDateString,
+                        activity_id: activityId,
+                        activity_name: activity?.name || activityId,
+                        activity_category: activity?.category || 'custom',
+                        completed: false,
+                        added: true,
+                    }, {
                         onConflict: 'user_id,activity_date,activity_id',
                     });
 
@@ -364,7 +498,80 @@ export function AppProvider({ children }) {
             addToast('Gagal menyimpan. Coba lagi.', 'error');
             loadUserData(true);
         }
-    }, [activities, selectedDateString, selectedRamadanDay, isSelectedDayToday, user]);
+    }, [activities, selectedDateString, selectedRamadanDay, isSelectedDayToday, user, customActivities]);
+
+    // Add a custom activity to the selected day
+    const addCustomActivityToDay = useCallback(async (activityId) => {
+        if (!user) {
+            addToast('Silakan login terlebih dahulu', 'error');
+            return;
+        }
+
+        const activity = customActivities.find(a => a.id === activityId);
+        if (!activity) return;
+
+        // Mark as added (not completed yet)
+        setActivities(prev => ({
+            ...prev,
+            [selectedDateString]: {
+                ...prev[selectedDateString],
+                [activityId]: {
+                    completed: false,
+                    added: true,
+                    addedAt: new Date().toISOString(),
+                },
+            },
+        }));
+
+        addToast(`➕ ${activity.name} ditambahkan ke Hari ${selectedRamadanDay}`, 'success');
+
+        // Sync to Supabase
+        try {
+            await supabase
+                .from('daily_activities')
+                .upsert({
+                    user_id: user.id,
+                    activity_date: selectedDateString,
+                    activity_id: activityId,
+                    activity_name: activity.name,
+                    activity_category: activity.category || 'custom',
+                    completed: false,
+                    added: true,
+                }, {
+                    onConflict: 'user_id,activity_date,activity_id',
+                });
+        } catch (error) {
+            console.error('Error adding custom activity:', error);
+        }
+    }, [user, selectedDateString, selectedRamadanDay, customActivities]);
+
+    // Remove a custom activity from the selected day
+    const removeCustomActivityFromDay = useCallback(async (activityId) => {
+        if (!user) return;
+
+        const activity = customActivities.find(a => a.id === activityId);
+
+        // Remove from local state
+        setActivities(prev => {
+            const dayData = { ...prev[selectedDateString] };
+            delete dayData[activityId];
+            return { ...prev, [selectedDateString]: dayData };
+        });
+
+        addToast(`🗑️ ${activity?.name || 'Aktivitas'} dihapus dari Hari ${selectedRamadanDay}`, 'info');
+
+        // Remove from Supabase
+        try {
+            await supabase
+                .from('daily_activities')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('activity_date', selectedDateString)
+                .eq('activity_id', activityId);
+        } catch (error) {
+            console.error('Error removing custom activity:', error);
+        }
+    }, [user, selectedDateString, selectedRamadanDay, customActivities]);
 
     // Update Quran progress
     const addPagesRead = useCallback(async (pages) => {
@@ -409,6 +616,62 @@ export function AppProvider({ children }) {
             loadUserData();
         }
     }, [quranProgress, user, todayString]);
+
+    // Reset Quran progress
+    const resetQuranProgress = useCallback(async () => {
+        if (!user) {
+            addToast('Silakan login terlebih dahulu', 'error');
+            return;
+        }
+
+        // Optimistic update
+        setQuranProgress({ currentJuz: 1, pagesRead: 0 });
+
+        try {
+            await supabase
+                .from('quran_progress')
+                .upsert({
+                    user_id: user.id,
+                    current_juz: 1,
+                    pages_read: 0,
+                    last_read_date: todayString,
+                }, {
+                    onConflict: 'user_id',
+                });
+
+            addToast('🔄 Progress Al-Quran direset', 'info');
+        } catch (error) {
+            console.error('Error resetting Quran progress:', error);
+            addToast('Gagal mereset. Coba lagi.', 'error');
+            loadUserData();
+        }
+    }, [user, todayString]);
+
+    // Update Quran progress to specific values
+    const updateQuranProgress = useCallback(async (newJuz, newPages) => {
+        if (!user) {
+            addToast('Silakan login terlebih dahulu', 'error');
+            return;
+        }
+
+        setQuranProgress({ currentJuz: newJuz, pagesRead: newPages });
+
+        try {
+            await supabase
+                .from('quran_progress')
+                .upsert({
+                    user_id: user.id,
+                    current_juz: newJuz,
+                    pages_read: newPages,
+                    last_read_date: todayString,
+                }, {
+                    onConflict: 'user_id',
+                });
+        } catch (error) {
+            console.error('Error updating Quran progress:', error);
+            loadUserData();
+        }
+    }, [user, todayString]);
 
     // Calculate stats
     const getStats = useCallback(() => {
@@ -514,7 +777,7 @@ export function AppProvider({ children }) {
         }
     }, [selectedDateString, selectedRamadanDay, user, addToast]);
 
-    // Day navigation
+    // Day navigation - Allow navigating all 30 days
     const goToPreviousDay = useCallback(() => {
         if (selectedRamadanDay > 1) {
             setSelectedRamadanDay(prev => prev - 1);
@@ -522,20 +785,21 @@ export function AppProvider({ children }) {
     }, [selectedRamadanDay]);
 
     const goToNextDay = useCallback(() => {
-        if (selectedRamadanDay < currentRamadanDay) {
+        if (selectedRamadanDay < 30) {
             setSelectedRamadanDay(prev => prev + 1);
         }
-    }, [selectedRamadanDay, currentRamadanDay]);
+    }, [selectedRamadanDay]);
 
     const goToDay = useCallback((day) => {
-        if (day >= 1 && day <= currentRamadanDay) {
+        if (day >= 1 && day <= 30) {
             setSelectedRamadanDay(day);
         }
-    }, [currentRamadanDay]);
+    }, []);
 
     const goToToday = useCallback(() => {
-        setSelectedRamadanDay(currentRamadanDay);
-    }, [currentRamadanDay]);
+        // Use clamped day to ensure we don't go to negative day
+        setSelectedRamadanDay(clampedRamadanDay);
+    }, [clampedRamadanDay]);
 
     const value = {
         // State
@@ -553,6 +817,7 @@ export function AppProvider({ children }) {
         leaderboard,
         communityStats,
         announcements,
+        customActivities,
 
         // Setters
         setCurrentPage,
@@ -568,16 +833,21 @@ export function AppProvider({ children }) {
         // Actions
         toggleActivity,
         addPagesRead,
+        resetQuranProgress,
+        updateQuranProgress,
         addToast,
         resetToday: resetSelectedDay,
         requestNotificationPermission,
         fetchLeaderboard,
         fetchCommunityStats,
         loadUserData,
+        addCustomActivityToDay,
+        removeCustomActivityFromDay,
 
         // Getters
         getTodayActivities: getSelectedDayActivities,
         getSelectedDayActivities,
+        getAddedCustomActivitiesForDay,
         getActivityTimeData,
         getStats,
         getHistory,

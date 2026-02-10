@@ -3,12 +3,15 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
+const USER_GROUPS = ['CHP', 'MR1', 'MR2', 'MR3', 'MR4', 'SMD1', 'SMD2'];
+
 export default function AuthPage() {
     const { signIn, signUp, configError } = useAuth();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
+    const [userGroup, setUserGroup] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -30,8 +33,13 @@ export default function AuthPage() {
                 setLoading(false);
                 return;
             }
+            if (!userGroup) {
+                setError('Pilih grup terlebih dahulu');
+                setLoading(false);
+                return;
+            }
 
-            const { error } = await signUp(email, password, fullName);
+            const { error } = await signUp(email, password, fullName, userGroup);
             if (error) {
                 setError(error.message || 'Registrasi gagal. Coba lagi.');
             } else {
@@ -96,17 +104,35 @@ export default function AuthPage() {
                 {/* Form */}
                 <form onSubmit={handleSubmit}>
                     {!isLogin && (
-                        <div className="form-group">
-                            <label className="form-label">Nama Lengkap</label>
-                            <input
-                                type="text"
-                                className="form-input"
-                                placeholder="Masukkan nama lengkap"
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
-                                required={!isLogin}
-                            />
-                        </div>
+                        <>
+                            <div className="form-group">
+                                <label className="form-label">Nama Lengkap</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="Masukkan nama lengkap"
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+                                    required={!isLogin}
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="form-label">Grup</label>
+                                <div className="group-selector">
+                                    {USER_GROUPS.map(group => (
+                                        <button
+                                            key={group}
+                                            type="button"
+                                            className={`group-pill ${userGroup === group ? 'active' : ''}`}
+                                            onClick={() => setUserGroup(group)}
+                                        >
+                                            {group}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
                     )}
 
                     <div className="form-group">
@@ -173,6 +199,7 @@ export default function AuthPage() {
                                 setIsLogin(!isLogin);
                                 setError('');
                                 setSuccess('');
+                                setUserGroup('');
                             }}
                             style={{
                                 background: 'none',
@@ -236,6 +263,31 @@ export default function AuthPage() {
         }
         .form-input::placeholder {
           color: var(--dark-500);
+        }
+        .group-selector {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .group-pill {
+          padding: 8px 16px;
+          background: var(--dark-700);
+          border: 2px solid var(--dark-600);
+          border-radius: var(--radius-full);
+          color: var(--dark-400);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .group-pill:hover {
+          border-color: var(--dark-500);
+          color: var(--dark-200);
+        }
+        .group-pill.active {
+          background: rgba(16, 185, 129, 0.15);
+          border-color: var(--emerald-500);
+          color: var(--emerald-400);
         }
         .alert {
           border-radius: var(--radius-md);
