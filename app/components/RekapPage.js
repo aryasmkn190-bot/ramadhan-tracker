@@ -19,6 +19,7 @@ import {
     AreaChart,
     Area,
 } from 'recharts';
+import DailyClockChart from './DailyClockChart';
 
 const PIE_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444', '#06b6d4', '#a78bfa', '#fb923c', '#34d399'];
 const RANK_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
