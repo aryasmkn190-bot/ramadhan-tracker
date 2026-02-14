@@ -63,7 +63,7 @@ export default function AyatHarianCard() {
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>
+                <h3 style={{ color: 'var(--dark-100)', margin: 0, fontSize: '16px' }}>
                     📖 Ayat Hari Ini
                 </h3>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -76,7 +76,7 @@ export default function AyatHarianCard() {
                                 borderRadius: 'var(--radius-full)',
                                 padding: '6px 12px',
                                 cursor: 'pointer',
-                                color: isPlaying ? 'black' : 'white',
+                                color: isPlaying ? 'black' : 'var(--dark-100)',
                                 fontSize: '12px',
                             }}
                         >
@@ -91,7 +91,7 @@ export default function AyatHarianCard() {
                             borderRadius: 'var(--radius-full)',
                             padding: '6px 12px',
                             cursor: 'pointer',
-                            color: 'white',
+                            color: 'var(--dark-100)',
                             fontSize: '12px',
                         }}
                     >
@@ -127,7 +127,7 @@ export default function AyatHarianCard() {
                 textAlign: 'right',
                 fontSize: '26px',
                 lineHeight: '2.2',
-                color: 'white',
+                color: 'var(--dark-100)',
                 marginBottom: '16px',
                 fontFamily: "'Amiri', serif",
                 direction: 'rtl',

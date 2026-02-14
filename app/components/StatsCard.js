@@ -22,8 +22,8 @@ export default function StatsCard() {
                     <div className="stat-label">Selesai</div>
                 </div>
                 <div className="stat-item">
-                    <div className="stat-value">{stats.quranJuz}</div>
-                    <div className="stat-label">Juz Quran</div>
+                    <div className="stat-value">{stats.quranPercentage}%</div>
+                    <div className="stat-label">Tadarus</div>
                 </div>
                 <div className="stat-item">
                     <div className="stat-value">{stats.streak || 0}</div>

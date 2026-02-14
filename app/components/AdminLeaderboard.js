@@ -57,7 +57,7 @@ export default function AdminLeaderboard() {
             const [profilesRes, activitiesRes, quranRes, customActRes] = await Promise.all([
                 supabase.from('profiles').select('id, full_name, user_group, role, email'),
                 supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
-                supabase.from('quran_progress').select('user_id, current_juz, pages_read'),
+                supabase.from('quran_readings').select('user_id, surah_number, start_ayat, end_ayat'),
                 supabase.from('custom_activities').select('id, name, icon, category'),
             ]);
 
@@ -120,8 +120,7 @@ export default function AdminLeaderboard() {
                 aktivitas: 0,
                 custom: 0,
                 total: 0,
-                pages_read: 0,
-                current_juz: 1,
+                quran_sessions: 0,
             };
         });
 
@@ -144,8 +143,7 @@ export default function AdminLeaderboard() {
         // Add quran data
         quranData.forEach(q => {
             if (userStats[q.user_id]) {
-                userStats[q.user_id].pages_read = q.pages_read || 0;
-                userStats[q.user_id].current_juz = q.current_juz || 1;
+                userStats[q.user_id].quran_sessions++;
             }
         });
 
@@ -157,7 +155,7 @@ export default function AdminLeaderboard() {
 
         // Sort
         users.sort((a, b) => {
-            if (rankBy === 'quran') return b.pages_read - a.pages_read;
+            if (rankBy === 'quran') return b.quran_sessions - a.quran_sessions;
             if (rankBy === 'sholat') return b.sholat - a.sholat;
             if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
             if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
@@ -171,14 +169,14 @@ export default function AdminLeaderboard() {
     const groupRanking = useMemo(() => {
         const groups = {};
         USER_GROUPS.forEach(g => {
-            groups[g] = { group: g, members: 0, totalActivities: 0, totalPages: 0, avgActivities: 0 };
+            groups[g] = { group: g, members: 0, totalActivities: 0, totalSessions: 0, avgActivities: 0 };
         });
 
         rankedUsers.forEach(u => {
             if (u.user_group && groups[u.user_group]) {
                 groups[u.user_group].members++;
                 groups[u.user_group].totalActivities += u.total;
-                groups[u.user_group].totalPages += u.pages_read;
+                groups[u.user_group].totalSessions += u.quran_sessions;
             }
         });
 
@@ -205,7 +203,7 @@ export default function AdminLeaderboard() {
     }, [filterMode, selectedDay, selectedWeek]);
 
     const getSortValue = (user) => {
-        if (rankBy === 'quran') return `${user.pages_read} hal`;
+        if (rankBy === 'quran') return `${user.quran_sessions} sesi`;
         if (rankBy === 'sholat') return `${user.sholat}x`;
         if (rankBy === 'sunnah') return `${user.sunnah}x`;
         if (rankBy === 'aktivitas') return `${user.aktivitas + user.custom}x`;
@@ -508,7 +506,7 @@ export default function AdminLeaderboard() {
                                             fontWeight: '700',
                                             color: 'var(--dark-200)',
                                         }}>
-                                            {g.totalActivities} akt • {g.totalPages} hal
+                                            {g.totalActivities} akt • {g.totalSessions} sesi
                                         </span>
                                     </div>
                                 </div>
@@ -616,7 +614,7 @@ export default function AdminLeaderboard() {
                                             <span>🕌{user.sholat}</span>
                                             <span>⭐{user.sunnah}</span>
                                             <span>📋{user.aktivitas + user.custom}</span>
-                                            <span>📖{user.pages_read}h</span>
+                                            <span>📖{user.quran_sessions}x</span>
                                         </div>
                                     </div>
 

@@ -241,6 +241,39 @@ export default function HomePage() {
                 )}
             </section>
 
+            {/* Spillover Activities (overnight from previous day) */}
+            {dayActivities.filter(a => a.isSpillover).length > 0 && (
+                <section className="section">
+                    <div className="section-header">
+                        <h2 className="section-title">
+                            <span>🔄</span>
+                            Aktivitas Lanjutan
+                        </h2>
+                        <span style={{
+                            fontSize: '11px',
+                            color: 'var(--emerald-400)',
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            padding: '4px 10px',
+                            borderRadius: 'var(--radius-full)',
+                            fontWeight: '600',
+                        }}>
+                            Otomatis
+                        </span>
+                    </div>
+                    <div style={{
+                        fontSize: '12px',
+                        color: 'var(--dark-400)',
+                        marginBottom: '12px',
+                        marginLeft: '4px',
+                    }}>
+                        Aktivitas dari hari sebelumnya yang melewati tengah malam
+                    </div>
+                    {dayActivities.filter(a => a.isSpillover).map(activity => (
+                        <ActivityCard key={activity.id} activity={activity} />
+                    ))}
+                </section>
+            )}
+
             {/* Tadarus Al-Quran */}
             <section className="section">
                 <div className="section-header">

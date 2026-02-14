@@ -2,6 +2,7 @@
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppProvider, useApp } from './contexts/AppContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import HomePage from './components/HomePage';
@@ -121,8 +122,10 @@ function AppWithAuth() {
 
 export default function Page() {
   return (
-    <AuthProvider>
-      <AppWithAuth />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppWithAuth />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

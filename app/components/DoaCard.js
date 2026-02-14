@@ -58,7 +58,7 @@ export default function DoaCard() {
         }}>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>
+                <h3 style={{ color: 'var(--dark-100)', margin: 0, fontSize: '16px' }}>
                     🤲 Doa Harian
                 </h3>
                 <button
@@ -69,7 +69,7 @@ export default function DoaCard() {
                         borderRadius: 'var(--radius-full)',
                         padding: '6px 12px',
                         cursor: 'pointer',
-                        color: 'white',
+                        color: 'var(--dark-100)',
                         fontSize: '12px',
                     }}
                 >
@@ -95,7 +95,7 @@ export default function DoaCard() {
                 textAlign: 'right',
                 fontSize: '22px',
                 lineHeight: '2',
-                color: 'white',
+                color: 'var(--dark-100)',
                 marginBottom: '16px',
                 fontFamily: "'Amiri', serif",
                 direction: 'rtl',

@@ -58,7 +58,16 @@ export function AuthProvider({ children }) {
                 if (!mountedRef.current) return;
 
                 if (error) {
-                    console.error('Session error:', error);
+                    // Handle invalid refresh token specifically
+                    if (error.message && (
+                        error.message.includes('Refresh Token Not Found') || 
+                        error.message.includes('Invalid Refresh Token')
+                    )) {
+                        console.warn('Session expired or invalid, clearing auth...');
+                        await forceLogout();
+                    } else {
+                        console.error('Session error:', error);
+                    }
                     finishLoading();
                     return;
                 }
@@ -86,12 +95,20 @@ export function AuthProvider({ children }) {
             async (event, session) => {
                 if (!mountedRef.current) return;
 
-                setUser(session?.user ?? null);
-
-                if (session?.user) {
-                    fetchProfileInBackground(session.user.id);
-                } else {
+                // Handle token refresh errors which fire SIGNED_OUT or custom events
+                if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+                    setUser(null);
                     setProfile(null);
+                    // Clear local storage just in case
+                    localStorage.removeItem('supabase.auth.token');
+                } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                    setUser(session?.user ?? null);
+                    if (session?.user) {
+                        fetchProfileInBackground(session.user.id);
+                    }
+                } else {
+                    // Fallback
+                    setUser(session?.user ?? null);
                 }
             }
         );
@@ -102,6 +119,22 @@ export function AuthProvider({ children }) {
             subscription?.unsubscribe();
         };
     }, []);
+
+    const forceLogout = async () => {
+        try {
+            await supabase.auth.signOut();
+        } catch (e) {
+            // Ignore error on forced logout
+        }
+        setUser(null);
+        setProfile(null);
+        // Clean up local storage manually if needed
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+                localStorage.removeItem(key);
+            }
+        });
+    };
 
     // Fetch profile in background - don't block loading
     const fetchProfileInBackground = async (userId) => {

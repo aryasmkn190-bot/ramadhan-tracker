@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
+import QURAN_SURAHS from '../data/quranSurahs';
+import DailyClockChart from './DailyClockChart';
 import {
     BarChart,
     Bar,
@@ -30,7 +32,8 @@ export default function RekapPage() {
         DEFAULT_SUNNAH,
         DEFAULT_ACTIVITIES,
         customActivities,
-        quranProgress,
+        quranGlobalProgress,
+        quranReadings,
     } = useApp();
 
     // Filter mode: 'day' = single day, '7days' = 7 hari, '30days' = 30 hari
@@ -165,6 +168,84 @@ export default function RekapPage() {
         };
     }, [dailyData, daysToInclude, allActivityDefs]);
 
+    // Per-activity total hours for multi-day view
+    const activityHoursSummary = useMemo(() => {
+        if (filterMode === 'day') return [];
+
+        const parseTimeToMin = (t) => {
+            if (!t) return null;
+            const m = t.match(/(\d{1,2}):(\d{2})/);
+            if (!m) return null;
+            return parseInt(m[1]) * 60 + parseInt(m[2]);
+        };
+
+        const calcSessionMinutes = (start, end) => {
+            const sm = parseTimeToMin(start);
+            const em = parseTimeToMin(end);
+            if (sm === null || em === null) return 0;
+            // Handle overnight
+            return em >= sm ? em - sm : (24 * 60 - sm) + em;
+        };
+
+        const hourMap = {}; // { actId: { name, icon, totalMinutes, dayCount } }
+
+        daysToInclude.forEach(day => {
+            const dateStr = getDateForRamadanDay(day);
+            const dayActs = activities[dateStr] || {};
+
+            Object.entries(dayActs).forEach(([actId, data]) => {
+                if (!data?.completed || !data.startTime) return;
+
+                let minutes = 0;
+                if (data.endTime === '__multi__') {
+                    try {
+                        const sessions = JSON.parse(data.startTime);
+                        sessions.forEach(s => {
+                            if (s.start && s.end) minutes += calcSessionMinutes(s.start, s.end);
+                        });
+                    } catch { /* skip */ }
+                } else if (data.endTime) {
+                    minutes = calcSessionMinutes(data.startTime, data.endTime);
+                }
+
+                if (minutes <= 0) return;
+
+                // Merge spillover into parent activity
+                const baseId = actId.endsWith('__spillover')
+                    ? actId.replace('__spillover', '')
+                    : actId;
+
+                const allDefs = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
+                const actDef = allDefs.find(a => a.id === baseId);
+
+                let displayName = actDef?.name;
+                if (!displayName) {
+                    if (data.name) {
+                        displayName = data.name.replace(' (lanjutan)', '');
+                    } else {
+                        displayName = baseId;
+                    }
+                }
+                const icon = actDef?.icon || '📌';
+
+                if (!hourMap[baseId]) {
+                    hourMap[baseId] = { name: displayName, icon, totalMinutes: 0, dayCount: 0 };
+                }
+                hourMap[baseId].totalMinutes += minutes;
+                if (!actId.endsWith('__spillover')) {
+                    hourMap[baseId].dayCount++;
+                }
+            });
+        });
+
+        return Object.values(hourMap)
+            .sort((a, b) => b.totalMinutes - a.totalMinutes)
+            .map(item => ({
+                ...item,
+                totalHours: item.totalMinutes / 60,
+            }));
+    }, [filterMode, daysToInclude, activities, getDateForRamadanDay, DEFAULT_PRAYERS, DEFAULT_SUNNAH, DEFAULT_ACTIVITIES, customActivities]);
+
     // Single day detail: list all activities with status
     const singleDayDetail = useMemo(() => {
         if (filterMode !== 'day') return null;
@@ -177,10 +258,37 @@ export default function RekapPage() {
         const addedCustom = customActivities.filter(ca => dayActs[ca.id]?.added);
         const allForDay = [...defaults, ...addedCustom];
 
-        return allForDay.map(act => ({
+        const result = allForDay.map(act => ({
             ...act,
             completed: dayActs[act.id]?.completed || false,
+            timeData: dayActs[act.id] ? {
+                startTime: dayActs[act.id].startTime || null,
+                endTime: dayActs[act.id].endTime || null,
+            } : null,
         }));
+
+        // Add spillover activities (overnight from previous day)
+        Object.entries(dayActs).forEach(([key, data]) => {
+            if (key.endsWith('__spillover') && data?.completed) {
+                const originalId = key.replace('__spillover', '');
+                const allDefault = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
+                const original = allDefault.find(a => a.id === originalId);
+                result.push({
+                    id: key,
+                    name: `${original?.name || originalId} (lanjutan)`,
+                    icon: original?.icon || '🔄',
+                    category: original?.category || 'other',
+                    completed: true,
+                    timeData: {
+                        startTime: data.startTime || null,
+                        endTime: data.endTime || null,
+                    },
+                    isSpillover: true,
+                });
+            }
+        });
+
+        return result;
     }, [filterMode, selectedDay, activities, getDateForRamadanDay, DEFAULT_PRAYERS, DEFAULT_SUNNAH, DEFAULT_ACTIVITIES, customActivities]);
 
     // Tooltip style
@@ -375,124 +483,21 @@ export default function RekapPage() {
                 )}
             </div>
 
-            {/* SINGLE DAY VIEW: Activity List */}
+
+
+
+            {/* SINGLE DAY VIEW: 24-Hour Clock Chart */}
             {filterMode === 'day' && singleDayDetail && (
                 <section style={{ marginBottom: '20px' }}>
                     <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
-                        📝 Detail Aktivitas Hari ke-{selectedDay}
-                    </h2>
-                    <div style={{
-                        background: 'var(--dark-800)',
-                        borderRadius: 'var(--radius-lg)',
-                        padding: '12px',
-                    }}>
-                        {[
-                            { label: '🕌 Sholat Wajib', items: singleDayDetail.filter(a => DEFAULT_PRAYERS.some(p => p.id === a.id)) },
-                            { label: '⭐ Sholat Sunnah', items: singleDayDetail.filter(a => DEFAULT_SUNNAH.some(s => s.id === a.id)) },
-                            { label: '☪️ Aktivitas Ramadhan', items: singleDayDetail.filter(a => DEFAULT_ACTIVITIES.some(act => act.id === a.id)) },
-                            { label: '📋 Lainnya', items: singleDayDetail.filter(a => a.isCustom) },
-                        ].filter(group => group.items.length > 0).map(group => (
-                            <div key={group.label} style={{ marginBottom: '14px' }}>
-                                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--dark-300)', marginBottom: '8px' }}>
-                                    {group.label}
-                                </div>
-                                {group.items.map(act => (
-                                    <div
-                                        key={act.id}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '10px',
-                                            padding: '10px 12px',
-                                            marginBottom: '4px',
-                                            background: act.completed ? 'rgba(16, 185, 129, 0.08)' : 'var(--dark-700)',
-                                            borderRadius: 'var(--radius-md)',
-                                            borderLeft: `3px solid ${act.completed ? '#10b981' : 'var(--dark-600)'}`,
-                                        }}
-                                    >
-                                        <span style={{ fontSize: '18px' }}>{act.icon}</span>
-                                        <span style={{
-                                            flex: 1,
-                                            fontSize: '13px',
-                                            color: act.completed ? '#10b981' : 'var(--dark-200)',
-                                            fontWeight: '500',
-                                        }}>
-                                            {act.name}
-                                        </span>
-                                        <span style={{
-                                            fontSize: '16px',
-                                        }}>
-                                            {act.completed ? '✅' : '⬜'}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            )}
-
-            {/* SINGLE DAY VIEW: Category Pie Chart */}
-            {filterMode === 'day' && categorySummary.length > 0 && (
-                <section style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
-                        🥧 Distribusi Aktivitas
+                        🕐 Distribusi Aktivitas 24 Jam
                     </h2>
                     <div style={{
                         background: 'var(--dark-800)',
                         borderRadius: 'var(--radius-lg)',
                         padding: '16px',
                     }}>
-                        <div style={{ height: '220px' }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={categorySummary}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={45}
-                                        outerRadius={80}
-                                        paddingAngle={3}
-                                        dataKey="value"
-                                    >
-                                        {categorySummary.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        {...tooltipStyle}
-                                        formatter={(value, name) => [`${value}x`, name]}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                        {/* Custom legend */}
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '8px 14px',
-                            justifyContent: 'center',
-                            marginTop: '12px',
-                        }}>
-                            {categorySummary.map((item, i) => (
-                                <div key={i} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    fontSize: '11px',
-                                    color: 'var(--dark-300)',
-                                }}>
-                                    <span style={{
-                                        width: '10px',
-                                        height: '10px',
-                                        borderRadius: '3px',
-                                        background: item.color,
-                                        flexShrink: 0,
-                                    }} />
-                                    {item.name} ({item.value})
-                                </div>
-                            ))}
-                        </div>
+                        <DailyClockChart dayActivities={singleDayDetail} />
                     </div>
                 </section>
             )}
@@ -633,135 +638,354 @@ export default function RekapPage() {
                 </section>
             )}
 
-            {/* Activity Ranking */}
-            <section style={{ marginBottom: '20px' }}>
-                <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
-                    🏆 Aktivitas {filterMode === 'day' ? 'Tercatat' : 'Terbanyak'}
-                </h2>
-                <div style={{
-                    background: 'var(--dark-800)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '12px',
-                }}>
-                    {activityRanking.length > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {activityRanking.map((act, index) => {
-                                const maxCount = activityRanking[0]?.count || 1;
-                                const barWidth = (act.count / maxCount) * 100;
+            {/* MULTI-DAY VIEW: Per-Activity Duration Summary */}
+            {filterMode !== 'day' && activityHoursSummary.length > 0 && (
+                <section style={{ marginBottom: '20px' }}>
+                    <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
+                        ⏱️ Rekap Durasi per Aktivitas
+                    </h2>
+                    <div style={{
+                        background: 'var(--dark-800)',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: '16px',
+                    }}>
+                        <div style={{
+                            fontSize: '11px',
+                            color: 'var(--dark-400)',
+                            marginBottom: '14px',
+                            textAlign: 'center',
+                        }}>
+                            Total durasi aktivitas yang tercatat selama {daysToInclude.length} hari
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {activityHoursSummary.map((item, i) => {
+                                const maxHours = activityHoursSummary[0]?.totalHours || 1;
+                                const barWidth = Math.max((item.totalHours / maxHours) * 100, 8);
+                                const hours = Math.floor(item.totalHours);
+                                const mins = Math.round((item.totalHours - hours) * 60);
+                                const durationStr = hours > 0 && mins > 0
+                                    ? `${hours}j ${mins}m`
+                                    : hours > 0 ? `${hours}j` : `${mins}m`;
+                                const barColors = [
+                                    '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899',
+                                    '#06b6d4', '#ef4444', '#84cc16', '#f97316', '#14b8a6',
+                                    '#a855f7', '#e879f9', '#22d3ee', '#facc15', '#fb923c',
+                                ];
+                                const color = barColors[i % barColors.length];
 
                                 return (
-                                    <div
-                                        key={act.id}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '10px',
-                                            padding: '10px 12px',
-                                            background: 'var(--dark-700)',
-                                            borderRadius: 'var(--radius-md)',
-                                            position: 'relative',
-                                            overflow: 'hidden',
-                                        }}
-                                    >
-                                        {/* Background bar */}
+                                    <div key={item.name + i}>
                                         <div style={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: `${barWidth}%`,
-                                            background: `${RANK_COLORS[index % RANK_COLORS.length]}15`,
-                                            transition: 'width 0.5s ease',
-                                        }} />
-                                        <span style={{
-                                            width: '22px',
-                                            height: '22px',
-                                            borderRadius: 'var(--radius-full)',
-                                            background: index < 3 ? RANK_COLORS[index] : 'var(--dark-600)',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '11px',
-                                            fontWeight: '700',
-                                            color: 'white',
-                                            position: 'relative',
-                                            zIndex: 1,
-                                            flexShrink: 0,
+                                            justifyContent: 'space-between',
+                                            marginBottom: '4px',
                                         }}>
-                                            {index + 1}
-                                        </span>
-                                        <span style={{ fontSize: '18px', position: 'relative', zIndex: 1 }}>{act.icon}</span>
-                                        <span style={{ flex: 1, color: 'var(--dark-100)', fontSize: '13px', position: 'relative', zIndex: 1 }}>
-                                            {act.name}
-                                        </span>
-                                        <span style={{
-                                            padding: '3px 8px',
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                fontSize: '13px',
+                                                fontWeight: '600',
+                                                color: 'var(--dark-100)',
+                                            }}>
+                                                <span style={{ fontSize: '16px' }}>{item.icon}</span>
+                                                {item.name}
+                                            </div>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '10px',
+                                                fontSize: '12px',
+                                            }}>
+                                                <span style={{
+                                                    color: 'var(--dark-400)',
+                                                    fontSize: '11px',
+                                                }}>
+                                                    {item.dayCount} hari
+                                                </span>
+                                                <span style={{
+                                                    fontWeight: '700',
+                                                    color: color,
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '13px',
+                                                }}>
+                                                    {durationStr}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            height: '6px',
                                             background: 'var(--dark-600)',
                                             borderRadius: 'var(--radius-full)',
-                                            fontSize: '11px',
-                                            color: RANK_COLORS[index % RANK_COLORS.length],
-                                            fontWeight: '600',
-                                            position: 'relative',
-                                            zIndex: 1,
+                                            overflow: 'hidden',
                                         }}>
-                                            {act.count}×
-                                        </span>
+                                            <div style={{
+                                                width: `${barWidth}%`,
+                                                height: '100%',
+                                                background: `linear-gradient(90deg, ${color}, ${color}99)`,
+                                                borderRadius: 'var(--radius-full)',
+                                                transition: 'width 0.5s ease',
+                                            }} />
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
-                    ) : (
-                        <div style={{
-                            textAlign: 'center',
-                            padding: '24px',
-                            color: 'var(--dark-400)',
-                            fontSize: '13px',
-                        }}>
-                            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📭</div>
-                            Belum ada aktivitas tercatat
-                        </div>
-                    )}
-                </div>
-            </section>
+                    </div>
+                </section>
+            )}
+
+
+
 
             {/* Quran Progress */}
-            <section>
-                <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
-                    📖 Progress Tadarus
-                </h2>
-                <div style={{
-                    background: 'var(--dark-800)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '20px',
-                    textAlign: 'center',
-                }}>
-                    <div style={{ fontSize: '40px', marginBottom: '8px' }}>📖</div>
-                    <div style={{ fontSize: '28px', fontWeight: '700', color: '#10b981' }}>
-                        Juz {quranProgress.currentJuz}
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--dark-400)', marginTop: '4px' }}>
-                        {quranProgress.pagesRead} halaman dibaca
-                    </div>
-                    <div style={{
-                        marginTop: '14px',
-                        height: '8px',
-                        background: 'var(--dark-600)',
-                        borderRadius: 'var(--radius-full)',
-                        overflow: 'hidden',
-                    }}>
+            {(() => {
+                // Filter quran readings by selected dates
+                const selectedDates = daysToInclude.map(d => getDateForRamadanDay(d));
+                const filteredReadings = quranReadings.filter(r => selectedDates.includes(r.readDate));
+
+                // Group readings by surah
+                const surahMap = {};
+                filteredReadings.forEach(r => {
+                    if (!surahMap[r.surahNumber]) {
+                        const surahInfo = QURAN_SURAHS.find(s => s.number === r.surahNumber);
+                        surahMap[r.surahNumber] = {
+                            number: r.surahNumber,
+                            name: surahInfo?.name || `Surat ${r.surahNumber}`,
+                            totalAyat: surahInfo?.totalAyat || 0,
+                            ranges: [],
+                        };
+                    }
+                    surahMap[r.surahNumber].ranges.push({
+                        start: r.startAyat,
+                        end: r.endAyat,
+                        date: r.readDate,
+                    });
+                });
+
+                // Sort by surah number
+                const surahList = Object.values(surahMap).sort((a, b) => a.number - b.number);
+
+                // Count unique ayat read in this period
+                const periodAyatSet = new Set();
+                filteredReadings.forEach(r => {
+                    for (let a = r.startAyat; a <= r.endAyat; a++) {
+                        periodAyatSet.add(`${r.surahNumber}:${a}`);
+                    }
+                });
+                const periodAyatCount = periodAyatSet.size;
+
+                const periodLabel = filterMode === 'day'
+                    ? `Hari ke-${selectedDay}`
+                    : filterMode === '7days'
+                        ? `7 Hari (Hari ${daysToInclude[0]}-${daysToInclude[daysToInclude.length - 1]})`
+                        : '30 Hari';
+
+                return (
+                    <section>
+                        <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
+                            📖 Progress Tadarus
+                        </h2>
+
+                        {/* Global Progress Card */}
                         <div style={{
-                            width: `${(quranProgress.currentJuz / 30) * 100}%`,
-                            height: '100%',
-                            background: 'linear-gradient(90deg, #10b981, #3b82f6)',
-                            borderRadius: 'var(--radius-full)',
-                            transition: 'width 0.5s ease',
-                        }} />
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--dark-500)', marginTop: '6px' }}>
-                        {Math.round((quranProgress.currentJuz / 30) * 100)}% dari 30 Juz
-                    </div>
-                </div>
-            </section>
+                            background: 'var(--dark-800)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: '16px',
+                            marginBottom: '12px',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                <div>
+                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        Progress Keseluruhan
+                                    </div>
+                                    <div style={{ fontSize: '24px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
+                                        {quranGlobalProgress.percentage}%
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
+                                        {quranGlobalProgress.totalRead.toLocaleString()} / {quranGlobalProgress.totalAyat.toLocaleString()} ayat
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: 'var(--dark-500)', marginTop: '2px' }}>
+                                        {quranGlobalProgress.completedSurahs}/114 surat selesai
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{
+                                height: '6px',
+                                background: 'var(--dark-600)',
+                                borderRadius: 'var(--radius-full)',
+                                overflow: 'hidden',
+                            }}>
+                                <div style={{
+                                    width: `${Math.min(quranGlobalProgress.percentage, 100)}%`,
+                                    height: '100%',
+                                    background: 'linear-gradient(90deg, #10b981, #3b82f6)',
+                                    borderRadius: 'var(--radius-full)',
+                                    transition: 'width 0.5s ease',
+                                }} />
+                            </div>
+                        </div>
+
+                        {/* Period Detail Card */}
+                        <div style={{
+                            background: 'var(--dark-800)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: '16px',
+                        }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                marginBottom: surahList.length > 0 ? '14px' : '0',
+                                paddingBottom: surahList.length > 0 ? '12px' : '0',
+                                borderBottom: surahList.length > 0 ? '1px solid var(--dark-700)' : 'none',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '16px' }}>📅</span>
+                                    <div>
+                                        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--dark-200)' }}>
+                                            Bacaan {periodLabel}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
+                                            {filteredReadings.length} sesi • {periodAyatCount} ayat unik
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {surahList.length === 0 ? (
+                                <div style={{
+                                    textAlign: 'center',
+                                    padding: '20px 0',
+                                    color: 'var(--dark-500)',
+                                    fontSize: '12px',
+                                }}>
+                                    <div style={{ fontSize: '28px', marginBottom: '8px', opacity: 0.5 }}>📖</div>
+                                    Belum ada bacaan pada periode ini
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {surahList.map(surah => {
+                                        // Get surah progress from global
+                                        const globalSurahProg = quranGlobalProgress.surahProgress.find(s => s.number === surah.number);
+                                        const surahPct = globalSurahProg?.percentage || 0;
+
+                                        // Merge overlapping ranges for display
+                                        const sorted = [...surah.ranges].sort((a, b) => a.start - b.start);
+                                        const merged = [];
+                                        sorted.forEach(range => {
+                                            const last = merged[merged.length - 1];
+                                            if (last && range.start <= last.end + 1) {
+                                                last.end = Math.max(last.end, range.end);
+                                            } else {
+                                                merged.push({ start: range.start, end: range.end });
+                                            }
+                                        });
+
+                                        return (
+                                            <div key={surah.number} style={{
+                                                background: 'var(--dark-750, rgba(255,255,255,0.03))',
+                                                borderRadius: 'var(--radius-md)',
+                                                padding: '12px',
+                                                border: '1px solid var(--dark-700)',
+                                            }}>
+                                                {/* Surah Header */}
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    marginBottom: '8px',
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div style={{
+                                                            width: '28px',
+                                                            height: '28px',
+                                                            borderRadius: 'var(--radius-full)',
+                                                            background: surahPct === 100
+                                                                ? 'linear-gradient(135deg, #10b981, #059669)'
+                                                                : 'var(--dark-700)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontSize: '11px',
+                                                            fontWeight: '700',
+                                                            color: surahPct === 100 ? 'white' : 'var(--dark-300)',
+                                                        }}>
+                                                            {surahPct === 100 ? '✓' : surah.number}
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--dark-100)' }}>
+                                                                {surah.name}
+                                                            </div>
+                                                            <div style={{ fontSize: '10px', color: 'var(--dark-400)' }}>
+                                                                {surah.totalAyat} ayat
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{
+                                                        fontSize: '11px',
+                                                        fontWeight: '600',
+                                                        color: surahPct === 100 ? '#10b981' : '#3b82f6',
+                                                        background: surahPct === 100
+                                                            ? 'rgba(16, 185, 129, 0.1)'
+                                                            : 'rgba(59, 130, 246, 0.1)',
+                                                        padding: '3px 8px',
+                                                        borderRadius: 'var(--radius-full)',
+                                                    }}>
+                                                        {surahPct}%
+                                                    </div>
+                                                </div>
+
+                                                {/* Progress bar */}
+                                                <div style={{
+                                                    height: '4px',
+                                                    background: 'var(--dark-600)',
+                                                    borderRadius: '2px',
+                                                    overflow: 'hidden',
+                                                    marginBottom: '8px',
+                                                }}>
+                                                    <div style={{
+                                                        width: `${surahPct}%`,
+                                                        height: '100%',
+                                                        background: surahPct === 100
+                                                            ? 'linear-gradient(90deg, #10b981, #059669)'
+                                                            : 'linear-gradient(90deg, #3b82f6, #6366f1)',
+                                                        borderRadius: '2px',
+                                                        transition: 'width 0.5s ease',
+                                                    }} />
+                                                </div>
+
+                                                {/* Ayat ranges */}
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                    {merged.map((range, idx) => (
+                                                        <span key={idx} style={{
+                                                            fontSize: '10px',
+                                                            fontWeight: '600',
+                                                            padding: '3px 8px',
+                                                            borderRadius: 'var(--radius-full)',
+                                                            background: 'rgba(99, 102, 241, 0.1)',
+                                                            color: '#818cf8',
+                                                            border: '1px solid rgba(99, 102, 241, 0.15)',
+                                                        }}>
+                                                            {range.start === range.end
+                                                                ? `Ayat ${range.start}`
+                                                                : `Ayat ${range.start}-${range.end}`
+                                                            }
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                );
+            })()}
         </main>
     );
 }

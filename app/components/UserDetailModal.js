@@ -77,9 +77,9 @@ export default function UserDetailModal({ user, allActivities, quranData, custom
         return allActivities.filter(a => a.user_id === user.id && a.completed);
     }, [allActivities, user.id]);
 
-    // Get Quran progress for user
-    const userQuran = useMemo(() => {
-        return quranData.find(q => q.user_id === user.id) || { pages_read: 0, current_juz: 1 };
+    // Get Quran reading count for user
+    const userQuranSessions = useMemo(() => {
+        return quranData.filter(q => q.user_id === user.id).length;
     }, [quranData, user.id]);
 
     // Get dates based on view mode
@@ -250,7 +250,7 @@ export default function UserDetailModal({ user, allActivities, quranData, custom
                     {[
                         { value: activeDayCount, label: 'Hari Aktif', color: '#10b981' },
                         { value: userActivities.length, label: 'Total Aktivitas', color: '#60a5fa' },
-                        { value: `${userQuran.pages_read} hal`, label: `Juz ${userQuran.current_juz}`, color: '#fbbf24' },
+                        { value: `${userQuranSessions} sesi`, label: 'Tadarus', color: '#fbbf24' },
                     ].map((item, i) => (
                         <div key={i} style={{
                             background: 'var(--dark-800)',

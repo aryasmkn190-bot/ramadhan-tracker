@@ -31,8 +31,8 @@ export default function HistoryPage() {
                         <div className="stat-label">Hari</div>
                     </div>
                     <div className="stat-item">
-                        <div className="stat-value">{stats.quranPages}</div>
-                        <div className="stat-label">Halaman Quran</div>
+                        <div className="stat-value">{stats.quranTotalRead}</div>
+                        <div className="stat-label">Ayat Terbaca</div>
                     </div>
                     <div className="stat-item">
                         <div className="stat-value">{history.length}</div>

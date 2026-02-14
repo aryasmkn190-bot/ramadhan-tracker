@@ -26,7 +26,7 @@ export default function AdminDashboardPage() {
         totalMembers: 0,
         admins: 0,
         newThisWeek: 0,
-        totalQuranPages: 0,
+        totalQuranReadings: 0,
         totalActivities: 0,
         groupCounts: {},
     });
@@ -43,7 +43,7 @@ export default function AdminDashboardPage() {
             const [profilesRes, activitiesRes, quranRes] = await Promise.all([
                 supabase.from('profiles').select('id, role, user_group, created_at'),
                 supabase.from('daily_activities').select('id', { count: 'exact', head: true }).eq('completed', true),
-                supabase.from('quran_progress').select('pages_read'),
+                supabase.from('quran_readings').select('id', { count: 'exact', head: true }),
             ]);
 
             const profiles = profilesRes.data || [];
@@ -65,13 +65,12 @@ export default function AdminDashboardPage() {
                 }
             });
 
-            const totalQuranPages = (quranRes.data || []).reduce((sum, q) => sum + (q.pages_read || 0), 0);
 
             setStats({
                 totalMembers: profiles.length,
                 admins,
                 newThisWeek,
-                totalQuranPages,
+                totalQuranReadings: quranRes.count || 0,
                 totalActivities: activitiesRes.count || 0,
                 groupCounts,
             });
@@ -178,10 +177,10 @@ export default function AdminDashboardPage() {
                     border: '1px solid var(--dark-700)',
                 }}>
                     <div style={{ fontSize: '22px', fontWeight: '700', color: '#fbbf24' }}>
-                        {stats.totalQuranPages}
+                        {stats.totalQuranReadings}
                     </div>
                     <div style={{ fontSize: '10px', color: 'var(--dark-400)', fontWeight: '600', textTransform: 'uppercase' }}>
-                        Total Halaman Quran
+                        Total Sesi Tadarus
                     </div>
                 </div>
                 <div style={{

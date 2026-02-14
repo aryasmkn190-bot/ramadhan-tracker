@@ -56,7 +56,7 @@ export default function AdminMembersPage() {
         try {
             const { data } = await supabase
                 .from('profiles')
-                .select(`*, quran_progress(current_juz, pages_read)`)
+                .select(`*`)
                 .order('full_name', { ascending: true });
             if (data) setMembers(data);
         } catch (error) {
@@ -157,8 +157,7 @@ export default function AdminMembersPage() {
         try {
             // Delete related data first
             await supabase.from('daily_activities').delete().eq('user_id', deletingMember.id);
-            await supabase.from('quran_progress').delete().eq('user_id', deletingMember.id);
-            await supabase.from('quran_reading_log').delete().eq('user_id', deletingMember.id);
+            await supabase.from('quran_readings').delete().eq('user_id', deletingMember.id);
 
             // Delete profile
             const { error } = await supabase.from('profiles').delete().eq('id', deletingMember.id);

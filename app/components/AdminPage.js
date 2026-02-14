@@ -48,10 +48,7 @@ export default function AdminPage() {
         try {
             const { data } = await supabase
                 .from('profiles')
-                .select(`
-          *,
-          quran_progress(current_juz, pages_read)
-        `)
+                .select(`*`)
                 .order('created_at', { ascending: false });
 
             if (data) setMembers(data);
@@ -463,7 +460,7 @@ export default function AdminPage() {
                                         )}
                                     </div>
                                     <div style={{ fontSize: '10px', color: 'var(--dark-400)' }}>
-                                        {member.email} • Juz {member.quran_progress?.[0]?.current_juz || 1}
+                                        {member.email}
                                     </div>
                                 </div>
 

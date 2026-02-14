@@ -1,8 +1,9 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import QURAN_SURAHS, { TOTAL_AYAT } from '../data/quranSurahs';
 
 const AppContext = createContext();
 
@@ -40,11 +41,35 @@ const getDateForRamadanDay = (day) => {
     return date.toISOString().split('T')[0];
 };
 
+// Helper: get next date string
+const getNextDateString = (dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+};
+
+// Helper: parse "HH:MM" to minutes
+const parseTimeToMinutes = (t) => {
+    if (!t) return null;
+    const m = t.match(/(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    return parseInt(m[1]) * 60 + parseInt(m[2]);
+};
+
+// Helper: check if a session is overnight (end < start)
+const isOvernightSession = (start, end) => {
+    if (!start || !end) return false;
+    const sm = parseTimeToMinutes(start);
+    const em = parseTimeToMinutes(end);
+    if (sm === null || em === null) return false;
+    return em < sm; // e.g., 21:00 start, 03:00 end
+};
+
 export function AppProvider({ children }) {
     const { user, profile } = useAuth();
 
     const [activities, setActivities] = useState({});
-    const [quranProgress, setQuranProgress] = useState({ currentJuz: 1, pagesRead: 0 });
+    const [quranReadings, setQuranReadings] = useState([]); // [{id, read_date, surah_number, start_ayat, end_ayat}]
     const [notifications, setNotifications] = useState(true);
     const [currentPage, setCurrentPageState] = useState('home');
     const [toasts, setToasts] = useState([]);
@@ -119,7 +144,7 @@ export function AppProvider({ children }) {
         } else {
             // Reset state when logged out
             setActivities({});
-            setQuranProgress({ currentJuz: 1, pagesRead: 0 });
+            setQuranReadings([]);
             setLeaderboard([]);
             setCommunityStats(null);
             setAnnouncements([]);
@@ -129,17 +154,17 @@ export function AppProvider({ children }) {
         return () => {
             isMounted = false;
         };
-    }, [user, profile?.user_group]);
+    }, [user?.id, profile?.user_group]);
 
     // Load ALL data in parallel for fast loading
     const loadAllData = async (isMounted = true) => {
         setIsLoading(true);
 
         try {
-            // ESSENTIAL: Load user activities and quran progress only
+            // ESSENTIAL: Load user activities and quran readings
             const [activitiesResult, quranResult] = await Promise.all([
                 supabase.from('daily_activities').select('*').eq('user_id', user.id),
-                supabase.from('quran_progress').select('*').eq('user_id', user.id).maybeSingle(),
+                supabase.from('quran_readings').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
             ]);
 
             if (!isMounted) return;
@@ -157,17 +182,22 @@ export function AppProvider({ children }) {
                         endTime: a.end_time,
                         completedAt: a.completed_at,
                         added: a.added || false,
+                        name: a.activity_name,
+                        category: a.activity_category,
                     };
                 });
                 setActivities(allActivities);
             }
 
-            // Process Quran progress
+            // Process Quran readings
             if (quranResult.data) {
-                setQuranProgress({
-                    currentJuz: quranResult.data.current_juz || 1,
-                    pagesRead: quranResult.data.pages_read || 0,
-                });
+                setQuranReadings(quranResult.data.map(r => ({
+                    id: r.id,
+                    readDate: r.read_date,
+                    surahNumber: r.surah_number,
+                    startAyat: r.start_ayat,
+                    endAyat: r.end_ayat,
+                })));
             }
 
         } catch (error) {
@@ -256,7 +286,10 @@ export function AppProvider({ children }) {
     // Load user data only (for revert/refresh after error)
     const loadUserData = async (isMounted = true) => {
         try {
-            const { data: activityData } = await supabase.from('daily_activities').select('*').eq('user_id', user.id);
+            const [{ data: activityData }, { data: quranData }] = await Promise.all([
+                supabase.from('daily_activities').select('*').eq('user_id', user.id),
+                supabase.from('quran_readings').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+            ]);
             if (!isMounted) return;
             if (activityData) {
                 const allActivities = {};
@@ -272,6 +305,15 @@ export function AppProvider({ children }) {
                     };
                 });
                 setActivities(allActivities);
+            }
+            if (quranData) {
+                setQuranReadings(quranData.map(r => ({
+                    id: r.id,
+                    readDate: r.read_date,
+                    surahNumber: r.surah_number,
+                    startAyat: r.start_ayat,
+                    endAyat: r.end_ayat,
+                })));
             }
         } catch (error) {
             if (error.name === 'AbortError') return;
@@ -358,7 +400,7 @@ export function AppProvider({ children }) {
         const addedCustom = getAddedCustomActivitiesForDay();
         const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...addedCustom];
 
-        return allActivities.map(activity => {
+        const result = allActivities.map(activity => {
             const activityData = dayData[activity.id];
             const isCompleted = activityData?.completed || false;
 
@@ -368,7 +410,28 @@ export function AppProvider({ children }) {
                 timeData: activityData || null,
             };
         });
-    }, [activities, selectedDateString, getAddedCustomActivitiesForDay]);
+
+        // Add spillover activities (overnight from previous day)
+        Object.entries(dayData).forEach(([key, data]) => {
+            if (key.endsWith('__spillover') && data?.completed) {
+                const originalId = key.replace('__spillover', '');
+                // Find original activity for icon/category
+                const allDefault = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
+                const original = allDefault.find(a => a.id === originalId);
+                result.push({
+                    id: key,
+                    name: `${original?.name || originalId} (lanjutan)`,
+                    icon: original?.icon || '🔄',
+                    category: original?.category || 'other',
+                    completed: true,
+                    timeData: data,
+                    isSpillover: true,
+                });
+            }
+        });
+
+        return result;
+    }, [activities, selectedDateString, getAddedCustomActivitiesForDay, customActivities]);
 
     // Get time data for a specific activity
     const getActivityTimeData = useCallback((activityId) => {
@@ -452,6 +515,9 @@ export function AppProvider({ children }) {
                     });
 
                 if (error) throw error;
+
+                // === OVERNIGHT SPILLOVER ===
+                await handleOvernightSpillover(activityId, activity, startTime, endTime, selectedDateString);
             } else if (isCustom) {
                 // Custom activity: update to uncompleted but keep the row (added=true)
                 const { error } = await supabase
@@ -478,6 +544,22 @@ export function AppProvider({ children }) {
                     .eq('activity_id', activityId);
 
                 if (error) throw error;
+
+                // Also remove spillover from next day if exists
+                const nextDate = getNextDateString(selectedDateString);
+                const spilloverId = `${activityId}__spillover`;
+                await supabase
+                    .from('daily_activities')
+                    .delete()
+                    .eq('user_id', user.id)
+                    .eq('activity_date', nextDate)
+                    .eq('activity_id', spilloverId);
+                // Remove from local state
+                setActivities(prev => {
+                    const nextDayData = { ...prev[nextDate] };
+                    delete nextDayData[spilloverId];
+                    return { ...prev, [nextDate]: nextDayData };
+                });
             }
 
             // Show toast
@@ -485,7 +567,15 @@ export function AppProvider({ children }) {
                 const dayLabel = isSelectedDayToday ? '' : ` (Hari ${selectedRamadanDay})`;
                 let timeInfo = '';
                 if (newCompleted && startTime) {
-                    timeInfo = endTime ? ` ${startTime}-${endTime}` : ` ${startTime}`;
+                    if (endTime === '__multi__') {
+                        // Multi-session format
+                        try {
+                            const sessions = JSON.parse(startTime);
+                            timeInfo = ` (${sessions.length} sesi)`;
+                        } catch { timeInfo = ''; }
+                    } else {
+                        timeInfo = endTime ? ` ${startTime}-${endTime}` : ` ${startTime}`;
+                    }
                 }
                 addToast(
                     newCompleted
@@ -499,6 +589,145 @@ export function AppProvider({ children }) {
             loadUserData(true);
         }
     }, [activities, selectedDateString, selectedRamadanDay, isSelectedDayToday, user, customActivities]);
+
+    // === Handle Overnight Spillover ===
+    // Detects sessions that cross midnight and auto-creates next-day entries
+    const handleOvernightSpillover = useCallback(async (activityId, activity, startTime, endTime, dateString) => {
+        if (!user) return;
+        const nextDate = getNextDateString(dateString);
+        const spilloverId = `${activityId}__spillover`;
+
+        let spilloverSessions = [];
+
+        if (endTime === '__multi__' && startTime) {
+            // Multi-session: check each session
+            try {
+                const sessions = JSON.parse(startTime);
+                sessions.forEach(s => {
+                    if (isOvernightSession(s.start, s.end)) {
+                        spilloverSessions.push({ start: '00:00', end: s.end });
+                    }
+                });
+            } catch { /* ignore parse errors */ }
+        } else if (startTime && endTime && isOvernightSession(startTime, endTime)) {
+            // Single session overnight
+            spilloverSessions.push({ start: '00:00', end: endTime });
+        }
+
+        if (spilloverSessions.length === 0) {
+            // No overnight — remove any existing spillover
+            await supabase
+                .from('daily_activities')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('activity_date', nextDate)
+                .eq('activity_id', spilloverId);
+            setActivities(prev => {
+                const nextDayData = { ...prev[nextDate] };
+                delete nextDayData[spilloverId];
+                return { ...prev, [nextDate]: nextDayData };
+            });
+            return;
+        }
+
+        // Build spillover time data
+        let spillStartTime, spillEndTime;
+        if (spilloverSessions.length === 1) {
+            spillStartTime = spilloverSessions[0].start;
+            spillEndTime = spilloverSessions[0].end;
+        } else {
+            spillStartTime = JSON.stringify(spilloverSessions);
+            spillEndTime = '__multi__';
+        }
+
+        // Optimistic update for next day
+        setActivities(prev => ({
+            ...prev,
+            [nextDate]: {
+                ...prev[nextDate],
+                [spilloverId]: {
+                    completed: true,
+                    startTime: spillStartTime,
+                    endTime: spillEndTime,
+                    completedAt: new Date().toISOString(),
+                    spillover: true,
+                },
+            },
+        }));
+
+        // Upsert spillover to Supabase
+        await supabase
+            .from('daily_activities')
+            .upsert({
+                user_id: user.id,
+                activity_date: nextDate,
+                activity_id: spilloverId,
+                activity_name: `${activity?.name || activityId} (lanjutan)`,
+                activity_category: activity?.category || 'other',
+                completed: true,
+                completed_at: new Date().toISOString(),
+                start_time: spillStartTime,
+                end_time: spillEndTime,
+            }, {
+                onConflict: 'user_id,activity_date,activity_id',
+            });
+    }, [user]);
+
+    // Update activity time data without toggling completion status
+    const updateActivityTime = useCallback(async (activityId, startTime, endTime) => {
+        if (!user) return;
+
+        const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
+        const activity = allActivities.find(a => a.id === activityId);
+        const currentData = activities[selectedDateString]?.[activityId];
+        if (!currentData?.completed) return; // Only update time on completed activities
+
+        // Optimistic update
+        setActivities(prev => ({
+            ...prev,
+            [selectedDateString]: {
+                ...prev[selectedDateString],
+                [activityId]: {
+                    ...currentData,
+                    startTime: startTime || null,
+                    endTime: endTime || null,
+                },
+            },
+        }));
+
+        try {
+            const { error } = await supabase
+                .from('daily_activities')
+                .update({
+                    start_time: startTime || null,
+                    end_time: endTime || null,
+                })
+                .eq('user_id', user.id)
+                .eq('activity_date', selectedDateString)
+                .eq('activity_id', activityId);
+
+            if (error) throw error;
+
+            // === OVERNIGHT SPILLOVER ===
+            await handleOvernightSpillover(activityId, activity, startTime, endTime, selectedDateString);
+
+            // Format toast
+            let timeInfo = '';
+            if (endTime === '__multi__') {
+                try {
+                    const sessions = JSON.parse(startTime);
+                    timeInfo = ` (${sessions.length} sesi)`;
+                } catch { timeInfo = ''; }
+            } else {
+                timeInfo = endTime ? ` ${startTime}-${endTime}` : ` ${startTime}`;
+            }
+            const dayLabel = isSelectedDayToday ? '' : ` (Hari ${selectedRamadanDay})`;
+            addToast(`✅ Waktu diperbarui${timeInfo}${dayLabel}`, 'success');
+        } catch (error) {
+            addToast('Gagal memperbarui waktu. Coba lagi.', 'error');
+            loadUserData(true);
+        }
+    }, [activities, selectedDateString, selectedRamadanDay, isSelectedDayToday, user, customActivities, handleOvernightSpillover]);
 
     // Add a custom activity to the selected day
     const addCustomActivityToDay = useCallback(async (activityId) => {
@@ -573,105 +802,157 @@ export function AppProvider({ children }) {
         }
     }, [user, selectedDateString, selectedRamadanDay, customActivities]);
 
-    // Update Quran progress
-    const addPagesRead = useCallback(async (pages) => {
+    // ==================== QURAN AYAT TRACKING ====================
+
+    // Add a Quran reading session (surah + ayat range + date)
+    const addQuranReading = useCallback(async (surahNumber, startAyat, endAyat, readDate) => {
         if (!user) {
             addToast('Silakan login terlebih dahulu', 'error');
             return;
         }
 
-        const newPages = quranProgress.pagesRead + pages;
-        const newJuz = Math.min(Math.floor(newPages / 20) + 1, 30);
+        const dateStr = readDate || todayString;
+        const surah = QURAN_SURAHS.find(s => s.number === surahNumber);
+        if (!surah) return;
 
-        // Optimistic update
-        setQuranProgress({ currentJuz: newJuz, pagesRead: newPages });
+        // Validate ayat range
+        const clampedStart = Math.max(1, Math.min(startAyat, surah.totalAyat));
+        const clampedEnd = Math.max(clampedStart, Math.min(endAyat, surah.totalAyat));
+
+        // Optimistic: add to local state with temp ID
+        const tempId = `temp_${Date.now()}`;
+        const newReading = {
+            id: tempId,
+            readDate: dateStr,
+            surahNumber,
+            startAyat: clampedStart,
+            endAyat: clampedEnd,
+        };
+        setQuranReadings(prev => [...prev, newReading]);
 
         try {
-            await supabase
-                .from('quran_progress')
-                .upsert({
+            const { data, error } = await supabase
+                .from('quran_readings')
+                .insert({
                     user_id: user.id,
-                    current_juz: newJuz,
-                    pages_read: newPages,
-                    last_read_date: todayString,
-                }, {
-                    onConflict: 'user_id',
-                });
+                    read_date: dateStr,
+                    surah_number: surahNumber,
+                    start_ayat: clampedStart,
+                    end_ayat: clampedEnd,
+                })
+                .select()
+                .single();
 
-            // Log the reading
-            await supabase.from('quran_reading_log').upsert({
-                user_id: user.id,
-                read_date: todayString,
-                pages_count: pages,
-                juz_number: newJuz,
-            }, {
-                onConflict: 'user_id,read_date',
-            });
+            if (error) throw error;
 
-            fetchLeaderboard();
-            addToast(`📖 +${pages} halaman Al-Quran!`, 'success');
+            // Replace temp ID with real ID
+            setQuranReadings(prev =>
+                prev.map(r => r.id === tempId
+                    ? { ...r, id: data.id }
+                    : r
+                )
+            );
+
+            const ayatCount = clampedEnd - clampedStart + 1;
+            addToast(`📖 ${surah.name} ayat ${clampedStart}-${clampedEnd} (${ayatCount} ayat)`, 'success');
         } catch (error) {
-            console.error('Error syncing Quran progress:', error);
-            addToast('Gagal menyimpan. Coba lagi.', 'error');
-            loadUserData();
+            console.error('Error saving Quran reading:', error);
+            // Revert optimistic update
+            setQuranReadings(prev => prev.filter(r => r.id !== tempId));
+            if (error.code === '23505') {
+                addToast('Bacaan ini sudah tercatat sebelumnya', 'info');
+            } else {
+                addToast('Gagal menyimpan. Coba lagi.', 'error');
+            }
         }
-    }, [quranProgress, user, todayString]);
+    }, [user, todayString]);
 
-    // Reset Quran progress
-    const resetQuranProgress = useCallback(async () => {
-        if (!user) {
-            addToast('Silakan login terlebih dahulu', 'error');
-            return;
-        }
+    // Delete a quran reading session
+    const deleteQuranReading = useCallback(async (readingId) => {
+        if (!user) return;
 
-        // Optimistic update
-        setQuranProgress({ currentJuz: 1, pagesRead: 0 });
+        const deleted = quranReadings.find(r => r.id === readingId);
+        setQuranReadings(prev => prev.filter(r => r.id !== readingId));
 
         try {
-            await supabase
-                .from('quran_progress')
-                .upsert({
-                    user_id: user.id,
-                    current_juz: 1,
-                    pages_read: 0,
-                    last_read_date: todayString,
-                }, {
-                    onConflict: 'user_id',
-                });
+            const { error } = await supabase
+                .from('quran_readings')
+                .delete()
+                .eq('id', readingId)
+                .eq('user_id', user.id);
 
+            if (error) throw error;
+            addToast('🗑️ Bacaan dihapus', 'info');
+        } catch (error) {
+            console.error('Error deleting Quran reading:', error);
+            // Revert
+            if (deleted) setQuranReadings(prev => [...prev, deleted]);
+            addToast('Gagal menghapus. Coba lagi.', 'error');
+        }
+    }, [user, quranReadings]);
+
+    // Reset all Quran readings
+    const resetQuranReadings = useCallback(async () => {
+        if (!user) return;
+
+        const backup = [...quranReadings];
+        setQuranReadings([]);
+
+        try {
+            const { error } = await supabase
+                .from('quran_readings')
+                .delete()
+                .eq('user_id', user.id);
+
+            if (error) throw error;
             addToast('🔄 Progress Al-Quran direset', 'info');
         } catch (error) {
-            console.error('Error resetting Quran progress:', error);
+            console.error('Error resetting Quran readings:', error);
+            setQuranReadings(backup);
             addToast('Gagal mereset. Coba lagi.', 'error');
-            loadUserData();
         }
-    }, [user, todayString]);
+    }, [user, quranReadings]);
 
-    // Update Quran progress to specific values
-    const updateQuranProgress = useCallback(async (newJuz, newPages) => {
-        if (!user) {
-            addToast('Silakan login terlebih dahulu', 'error');
-            return;
-        }
+    // Get readings for a specific day
+    const getQuranReadingsForDay = useCallback((dateStr) => {
+        return quranReadings.filter(r => r.readDate === dateStr);
+    }, [quranReadings]);
 
-        setQuranProgress({ currentJuz: newJuz, pagesRead: newPages });
+    // Compute global progress: unique ayat read / total ayat
+    const quranGlobalProgress = useMemo(() => {
+        // Build set of unique "surah:ayat" keys
+        const readAyatSet = new Set();
+        quranReadings.forEach(r => {
+            for (let a = r.startAyat; a <= r.endAyat; a++) {
+                readAyatSet.add(`${r.surahNumber}:${a}`);
+            }
+        });
 
-        try {
-            await supabase
-                .from('quran_progress')
-                .upsert({
-                    user_id: user.id,
-                    current_juz: newJuz,
-                    pages_read: newPages,
-                    last_read_date: todayString,
-                }, {
-                    onConflict: 'user_id',
-                });
-        } catch (error) {
-            console.error('Error updating Quran progress:', error);
-            loadUserData();
-        }
-    }, [user, todayString]);
+        const totalRead = readAyatSet.size;
+        const percentage = TOTAL_AYAT > 0 ? Math.round((totalRead / TOTAL_AYAT) * 1000) / 10 : 0;
+
+        // Per-surah breakdown
+        const surahProgress = QURAN_SURAHS.map(s => {
+            let readCount = 0;
+            for (let a = 1; a <= s.totalAyat; a++) {
+                if (readAyatSet.has(`${s.number}:${a}`)) readCount++;
+            }
+            return {
+                ...s,
+                readCount,
+                completed: readCount === s.totalAyat,
+                percentage: s.totalAyat > 0 ? Math.round((readCount / s.totalAyat) * 100) : 0,
+            };
+        });
+
+        return {
+            totalRead,
+            totalAyat: TOTAL_AYAT,
+            percentage,
+            surahProgress,
+            completedSurahs: surahProgress.filter(s => s.completed).length,
+        };
+    }, [quranReadings]);
 
     // Calculate stats
     const getStats = useCallback(() => {
@@ -704,11 +985,11 @@ export function AppProvider({ children }) {
             totalCompleted,
             currentDay: currentRamadanDay,
             selectedDay: selectedRamadanDay,
-            quranJuz: quranProgress.currentJuz,
-            quranPages: quranProgress.pagesRead,
+            quranTotalRead: quranGlobalProgress.totalRead,
+            quranPercentage: quranGlobalProgress.percentage,
             streak,
         };
-    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, quranProgress]);
+    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, quranGlobalProgress]);
 
     // Toast management
     const addToast = useCallback((message, type = 'success') => {
@@ -804,7 +1085,8 @@ export function AppProvider({ children }) {
     const value = {
         // State
         activities,
-        quranProgress,
+        quranReadings,
+        quranGlobalProgress,
         notifications,
         currentPage,
         toasts,
@@ -832,9 +1114,10 @@ export function AppProvider({ children }) {
 
         // Actions
         toggleActivity,
-        addPagesRead,
-        resetQuranProgress,
-        updateQuranProgress,
+        updateActivityTime,
+        addQuranReading,
+        deleteQuranReading,
+        resetQuranReadings,
         addToast,
         resetToday: resetSelectedDay,
         requestNotificationPermission,
@@ -849,6 +1132,7 @@ export function AppProvider({ children }) {
         getSelectedDayActivities,
         getAddedCustomActivitiesForDay,
         getActivityTimeData,
+        getQuranReadingsForDay,
         getStats,
         getHistory,
         getDateForRamadanDay,
@@ -857,6 +1141,8 @@ export function AppProvider({ children }) {
         DEFAULT_PRAYERS,
         DEFAULT_SUNNAH,
         DEFAULT_ACTIVITIES,
+        QURAN_SURAHS,
+        TOTAL_AYAT,
         RAMADAN_START,
     };
 

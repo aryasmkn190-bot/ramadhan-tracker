@@ -119,7 +119,7 @@ export default function JadwalShalatCard() {
                 border: '1px solid rgba(16, 185, 129, 0.2)',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>
+                    <h3 style={{ color: 'var(--dark-100)', margin: 0, fontSize: '16px' }}>
                         📍 Pilih Lokasi
                     </h3>
                     {selectedProvince && (
@@ -150,7 +150,7 @@ export default function JadwalShalatCard() {
                             borderRadius: 'var(--radius-md)',
                             border: '1px solid var(--dark-600)',
                             background: 'var(--dark-800)',
-                            color: 'white',
+                            color: 'var(--dark-100)',
                             fontSize: '14px',
                         }}
                     >
@@ -169,7 +169,7 @@ export default function JadwalShalatCard() {
                                 borderRadius: 'var(--radius-md)',
                                 border: '1px solid var(--dark-600)',
                                 background: 'var(--dark-800)',
-                                color: 'white',
+                                color: 'var(--dark-100)',
                                 fontSize: '14px',
                             }}
                         >
@@ -209,7 +209,7 @@ export default function JadwalShalatCard() {
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <div>
-                    <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>
+                    <h3 style={{ color: 'var(--dark-100)', margin: 0, fontSize: '16px' }}>
                         🕌 Jadwal Shalat Hari Ini
                     </h3>
                     <p style={{ color: 'var(--dark-400)', margin: '4px 0 0', fontSize: '12px' }}>
@@ -224,7 +224,7 @@ export default function JadwalShalatCard() {
                         borderRadius: 'var(--radius-full)',
                         padding: '8px',
                         cursor: 'pointer',
-                        color: 'white',
+                        color: 'var(--dark-100)',
                     }}
                 >
                     ⚙️
@@ -275,7 +275,7 @@ export default function JadwalShalatCard() {
                         <div
                             key={prayer.name}
                             style={{
-                                background: prayer.highlight ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)',
+                                background: prayer.highlight ? 'rgba(245, 158, 11, 0.2)' : 'rgba(0,0,0,0.03)',
                                 borderRadius: 'var(--radius-sm)',
                                 padding: '10px 8px',
                                 textAlign: 'center',
@@ -285,7 +285,7 @@ export default function JadwalShalatCard() {
                             <div style={{ fontSize: '16px', marginBottom: '4px' }}>{prayer.icon}</div>
                             <div style={{ color: 'var(--dark-400)', fontSize: '10px' }}>{prayer.name}</div>
                             <div style={{
-                                color: prayer.highlight ? 'var(--gold)' : 'white',
+                                color: prayer.highlight ? 'var(--gold-500)' : 'var(--dark-100)',
                                 fontSize: '13px',
                                 fontWeight: '600',
                                 fontFamily: 'monospace',

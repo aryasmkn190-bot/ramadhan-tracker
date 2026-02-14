@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function SettingsPage() {
     const {
@@ -14,6 +15,7 @@ export default function SettingsPage() {
     } = useApp();
 
     const { user, profile, signOut, isAdmin } = useAuth();
+    const { themeMode, setThemeMode, resolvedTheme } = useTheme();
 
     const [showResetModal, setShowResetModal] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -195,6 +197,83 @@ export default function SettingsPage() {
                     Tersinkron Online
                 </div>
             </div>
+
+            {/* Theme Selector */}
+            <section className="section">
+                <div className="section-header">
+                    <h2 className="section-title">
+                        <span>🎨</span>
+                        Tema Tampilan
+                    </h2>
+                </div>
+
+                <div style={{
+                    background: 'var(--dark-700)',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: '16px',
+                    border: '1px solid var(--dark-600)',
+                }}>
+                    <div style={{
+                        display: 'flex',
+                        gap: '6px',
+                        background: 'var(--dark-800)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '4px',
+                    }}>
+                        {[
+                            { mode: 'dark', icon: '🌙', label: 'Gelap' },
+                            { mode: 'light', icon: '☀️', label: 'Terang' },
+                            { mode: 'auto', icon: '🔄', label: 'Otomatis' },
+                        ].map(option => (
+                            <button
+                                key={option.mode}
+                                onClick={() => setThemeMode(option.mode)}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 8px',
+                                    borderRadius: 'var(--radius-sm)',
+                                    border: 'none',
+                                    background: themeMode === option.mode
+                                        ? 'var(--emerald-600)'
+                                        : 'transparent',
+                                    color: themeMode === option.mode
+                                        ? 'white'
+                                        : 'var(--dark-400)',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    transition: 'var(--transition-fast)',
+                                }}
+                            >
+                                <span style={{ fontSize: '18px' }}>{option.icon}</span>
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {themeMode === 'auto' && (
+                        <div style={{
+                            marginTop: '10px',
+                            padding: '8px 12px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'var(--dark-800)',
+                            fontSize: '11px',
+                            color: 'var(--dark-400)',
+                            textAlign: 'center',
+                        }}>
+                            {resolvedTheme === 'dark' ? '🌙' : '☀️'}{' '}
+                            Saat ini: <strong style={{ color: 'var(--dark-200)' }}>
+                                {resolvedTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}
+                            </strong>
+                            {' • '}Berganti otomatis jam 06:00 & 18:00
+                        </div>
+                    )}
+                </div>
+            </section>
 
             {/* Settings List */}
             <section className="section">

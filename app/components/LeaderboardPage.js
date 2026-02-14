@@ -27,27 +27,25 @@ export default function LeaderboardPage() {
         return leaderboard.filter(item => item.user_group === selectedGroup);
     }, [leaderboard, selectedGroup]);
 
-    // Calculate group stats
     const groupStats = useMemo(() => {
         const stats = {};
         USER_GROUPS.forEach(group => {
             const groupMembers = leaderboard.filter(item => item.user_group === group);
-            const totalPages = groupMembers.reduce((sum, m) => sum + (m.pages_read || 0), 0);
-            const avgPages = groupMembers.length > 0 ? Math.round(totalPages / groupMembers.length) : 0;
+            const totalSessions = groupMembers.reduce((sum, m) => sum + (m.sessions || 0), 0);
+            const avgSessions = groupMembers.length > 0 ? Math.round(totalSessions / groupMembers.length) : 0;
             stats[group] = {
                 members: groupMembers.length,
-                totalPages,
-                avgPages,
+                totalSessions,
+                avgSessions,
             };
         });
         return stats;
     }, [leaderboard]);
 
-    // Rank groups by total pages
     const rankedGroups = useMemo(() => {
         return USER_GROUPS
             .map(group => ({ group, ...groupStats[group] }))
-            .sort((a, b) => b.totalPages - a.totalPages);
+            .sort((a, b) => b.totalSessions - a.totalSessions);
     }, [groupStats]);
 
     return (
@@ -70,8 +68,8 @@ export default function LeaderboardPage() {
                             <div className="stat-label">Aktif Hari Ini</div>
                         </div>
                         <div className="stat-item">
-                            <div className="stat-value">{communityStats.total_pages_read || 0}</div>
-                            <div className="stat-label">Total Halaman Quran</div>
+                            <div className="stat-value">{communityStats.total_sessions || communityStats.total_pages_read || 0}</div>
+                            <div className="stat-label">Total Sesi Tadarus</div>
                         </div>
                         <div className="stat-item">
                             <div className="stat-value">{communityStats.total_activities_completed || 0}</div>
@@ -94,8 +92,8 @@ export default function LeaderboardPage() {
                     {rankedGroups.map((item, index) => {
                         const colors = GROUP_COLORS[item.group];
                         const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
-                        const maxPages = rankedGroups[0]?.totalPages || 1;
-                        const barWidth = Math.max(5, (item.totalPages / maxPages) * 100);
+                        const maxSessions = rankedGroups[0]?.totalSessions || 1;
+                        const barWidth = Math.max(5, (item.totalSessions / maxSessions) * 100);
 
                         return (
                             <button
@@ -149,7 +147,7 @@ export default function LeaderboardPage() {
                                             fontSize: '11px',
                                             color: 'var(--dark-400)',
                                         }}>
-                                            {item.members} anggota • {item.totalPages} hal
+                                            {item.members} anggota • {item.totalSessions} sesi
                                         </span>
                                     </div>
                                     {/* Progress bar */}
@@ -336,7 +334,7 @@ export default function LeaderboardPage() {
                                             )}
                                         </div>
                                         <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
-                                            Juz {item.current_juz} • {item.pages_read} halaman
+                                            {item.sessions || 0} sesi tadarus
                                         </div>
                                     </div>
 
@@ -351,7 +349,7 @@ export default function LeaderboardPage() {
                                         whiteSpace: 'nowrap',
                                         flexShrink: 0,
                                     }}>
-                                        📖 {item.pages_read}
+                                        📖 {item.sessions || 0}x
                                     </div>
                                 </div>
                             );

@@ -20,9 +20,9 @@ const VIEW_READER = 'reader';
 
 export default function QuranPage() {
     const {
-        quranProgress,
-        addPagesRead,
-        updateQuranProgress,
+        quranGlobalProgress,
+        addQuranReading,
+        selectedDateString,
         addToast,
     } = useApp();
 
@@ -213,16 +213,10 @@ export default function QuranPage() {
         }
     }, [viewMode]);
 
-    // Mark surah as read (approximate pages)
+    // Mark surah as read (record all ayat)
     const markSurahRead = () => {
         if (!currentSurah) return;
-        const surahInfo = surahList.find(s => s.nomor === currentSurah.nomor);
-        if (!surahInfo) return;
-
-        // Approximate pages: total 604 pages, 6236 ayat -> ~10.3 ayat per page
-        const approxPages = Math.max(1, Math.round(currentSurah.jumlahAyat / 10.3));
-        addPagesRead(approxPages);
-        addToast(`✅ QS. ${currentSurah.namaLatin} selesai! (+${approxPages} halaman)`, 'success');
+        addQuranReading(currentSurah.nomor, 1, currentSurah.jumlahAyat, selectedDateString);
     };
 
     // Filter surahs
@@ -234,15 +228,6 @@ export default function QuranPage() {
 
     // Group surahs by juz
     const juzGroups = (() => {
-        const groups = {};
-        for (let i = 1; i <= 30; i++) {
-            groups[i] = {
-                number: i,
-                surahs: [],
-                isComplete: quranProgress.currentJuz > i ||
-                    (quranProgress.currentJuz === i && quranProgress.pagesRead >= i * 20),
-            };
-        }
         // Map surahs to juz (approximate based on standard mushaf)
         const juzMapping = {
             1: [1, 2], 2: [2], 3: [2, 3], 4: [3, 4], 5: [4], 6: [4, 5],
@@ -256,6 +241,20 @@ export default function QuranPage() {
             29: [67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77],
             30: [78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114],
         };
+        const groups = {};
+        for (let i = 1; i <= 30; i++) {
+            groups[i] = {
+                number: i,
+                surahs: [],
+                isComplete: (() => {
+                    const juzSurahNums = juzMapping[i] || [];
+                    return juzSurahNums.length > 0 && juzSurahNums.every(num => {
+                        const sp = quranGlobalProgress.surahProgress.find(s => s.number === num);
+                        return sp?.completed;
+                    });
+                })(),
+            };
+        }
         surahList.forEach(s => {
             for (const [juz, nums] of Object.entries(juzMapping)) {
                 if (nums.includes(s.nomor)) {
@@ -654,16 +653,16 @@ export default function QuranPage() {
                     Progress Tadarus
                 </h2>
                 <p style={{ fontSize: '13px', color: 'var(--dark-300)', marginBottom: '14px' }}>
-                    Juz {quranProgress.currentJuz}/30 • {quranProgress.pagesRead} halaman
+                    {quranGlobalProgress.totalRead.toLocaleString()} / {quranGlobalProgress.totalAyat.toLocaleString()} ayat • {quranGlobalProgress.completedSurahs}/114 surat
                 </p>
                 <div className="progress-bar" style={{ marginBottom: '6px' }}>
                     <div
                         className="progress-fill"
-                        style={{ width: `${Math.min((quranProgress.pagesRead / 604) * 100, 100)}%` }}
+                        style={{ width: `${Math.min(quranGlobalProgress.percentage, 100)}%` }}
                     />
                 </div>
                 <p style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
-                    {Math.round((quranProgress.pagesRead / 604) * 100)}% Khatam
+                    {quranGlobalProgress.percentage}% Khatam
                 </p>
 
                 {/* Last read bookmark */}
