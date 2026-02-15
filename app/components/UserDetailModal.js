@@ -74,6 +74,7 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                             if (!byDate[a.activity_date]) byDate[a.activity_date] = {};
                             byDate[a.activity_date][a.activity_id] = {
                                 completed: a.completed, startTime: a.start_time, endTime: a.end_time,
+                                notes: a.notes || null,
                                 completedAt: a.completed_at, added: a.added || false,
                                 name: a.activity_name, category: a.activity_category,
                             };
@@ -115,6 +116,7 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                             if (!byDate[a.activity_date]) byDate[a.activity_date] = {};
                             byDate[a.activity_date][a.activity_id] = {
                                 completed: a.completed, startTime: a.start_time, endTime: a.end_time,
+                                notes: a.notes || null,
                                 completedAt: a.completed_at, added: a.added || false,
                                 name: a.activity_name, category: a.activity_category,
                             };
@@ -209,10 +211,18 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
         const defaults = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES];
         const addedCustom = customActivities.filter(ca => dayActs[ca.id]?.added);
         const allForDay = [...defaults, ...addedCustom];
-        const result = allForDay.map(act => ({
-            ...act, completed: dayActs[act.id]?.completed || false,
-            timeData: dayActs[act.id] ? { startTime: dayActs[act.id].startTime || null, endTime: dayActs[act.id].endTime || null } : null,
-        }));
+        const result = allForDay.map(act => {
+            const dayData = dayActs[act.id];
+            const actNotes = dayData?.notes || null;
+            const displayName = (act.category === 'amanah' && actNotes)
+                ? `${act.name} ${actNotes}`
+                : act.name;
+            return {
+                ...act, name: displayName, originalName: act.name,
+                completed: dayData?.completed || false,
+                timeData: dayData ? { startTime: dayData.startTime || null, endTime: dayData.endTime || null, notes: actNotes } : null,
+            };
+        });
         Object.entries(dayActs).forEach(([key, data]) => {
             if (key.endsWith('__spillover') && data?.completed) {
                 const origId = key.replace('__spillover', '');

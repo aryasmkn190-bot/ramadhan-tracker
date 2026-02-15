@@ -52,7 +52,7 @@ function polar(cx, cy, r, deg) {
 
 function donutArc(cx, cy, oR, iR, a1, a2) {
     let diff = ((a2 - a1) % 360 + 360) % 360;
-    if (diff < 0.5) diff = 360;
+    if (diff < 0.3) return ''; // Too small to render — skip
     const os = polar(cx, cy, oR, a1), oe = polar(cx, cy, oR, a2);
     const is_ = polar(cx, cy, iR, a1), ie = polar(cx, cy, iR, a2);
     const la = diff > 180 ? 1 : 0;
@@ -440,18 +440,27 @@ export default function DailyClockChart({ dayActivities }) {
 
                     {/* ===== ACTIVITY ARCS — duration-based width ===== */}
                     {segments.map((seg, idx) => {
-                        const arcGap = 0.8; // small gap in degrees
-                        const a1 = hourToAngle(seg.startH) + arcGap;
-                        const a2 = hourToAngle(seg.endH) - arcGap;
+                        // Compute arc span (degrees) for this activity
+                        const rawSpan = ((hourToAngle(seg.endH) - hourToAngle(seg.startH)) % 360 + 360) % 360 || (seg.endH > seg.startH ? ((seg.endH - seg.startH) / 24) * 360 : 1);
+                        // Enforce minimum visible arc of 2° (~8 minutes), so short activities are still visible
+                        const MIN_ARC_DEG = 2;
+                        const effectiveSpan = Math.max(rawSpan, MIN_ARC_DEG);
+                        // Dynamic gap: never exceed 1/4 of the arc span
+                        const arcGap = Math.min(0.8, effectiveSpan / 4);
+                        const midAngle = hourToAngle(seg.startH) + rawSpan / 2;
+                        const a1 = midAngle - effectiveSpan / 2 + arcGap;
+                        const a2 = midAngle + effectiveSpan / 2 - arcGap;
                         const oR = OUTER_RING - seg.layer * (RING_W + RING_G);
                         const iR = oR - RING_W;
                         if (iR < INNER_LIMIT) return null;
+                        const arcPath = donutArc(CX, CY, oR, iR, a1, a2);
+                        if (!arcPath) return null; // skip if too small to render
                         const color = seg.color;
                         const isSelected = selectedIdx === idx;
                         return (
                             <path
                                 key={`seg-${idx}`}
-                                d={donutArc(CX, CY, oR, iR, a1, a2)}
+                                d={arcPath}
                                 fill={color}
                                 opacity={isSelected ? 1 : selectedIdx !== null ? 0.45 : 0.8}
                                 stroke={isSelected ? 'var(--dark-300)' : 'none'}

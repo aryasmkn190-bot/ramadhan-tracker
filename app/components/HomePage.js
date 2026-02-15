@@ -12,6 +12,7 @@ import AyatHarianCard from './AyatHarianCard';
 
 // Category labels and icons for custom activities
 const CATEGORY_INFO = {
+    amanah: { label: 'Amanah', icon: '🎯' },
     istirahat: { label: 'Istirahat', icon: '😴' },
     produktifitas: { label: 'Produktifitas', icon: '💼' },
     sosial: { label: 'Sosial', icon: '🤝' },
@@ -132,7 +133,53 @@ export default function HomePage() {
                 ))}
             </section>
 
-            {/* Custom Activities Section */}
+            {/* Amanah Section — separate from other custom activities */}
+            {customByCategory['amanah'] && customByCategory['amanah'].length > 0 && (
+                <section className="section">
+                    <div className="section-header">
+                        <h2 className="section-title">
+                            <span>🎯</span>
+                            Amanah
+                        </h2>
+                        <span className="section-action">
+                            {customByCategory['amanah'].filter(a => a.completed).length}/{customByCategory['amanah'].length}
+                        </span>
+                    </div>
+                    {customByCategory['amanah'].map(activity => (
+                        <div key={activity.id} style={{ position: 'relative' }}>
+                            <ActivityCard activity={activity} />
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeCustomActivityFromDay(activity.id);
+                                }}
+                                style={{
+                                    position: 'absolute',
+                                    top: '50%',
+                                    right: '48px',
+                                    transform: 'translateY(-50%)',
+                                    width: '28px',
+                                    height: '28px',
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    borderRadius: 'var(--radius-full)',
+                                    color: '#f87171',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                                title="Hapus dari hari ini"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    ))}
+                </section>
+            )}
+
+            {/* Custom Activities Section (non-amanah) */}
             <section className="section">
                 <div className="section-header">
                     <h2 className="section-title">
@@ -140,9 +187,9 @@ export default function HomePage() {
                         Aktivitas Lainnya
                     </h2>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {addedCustomActivities.length > 0 && (
+                        {addedCustomActivities.filter(a => a.category !== 'amanah').length > 0 && (
                             <span className="section-action">
-                                {addedCustomActivities.filter(a => a.completed).length}/{addedCustomActivities.length}
+                                {addedCustomActivities.filter(a => a.category !== 'amanah' && a.completed).length}/{addedCustomActivities.filter(a => a.category !== 'amanah').length}
                             </span>
                         )}
                         {hasAvailableActivities && (
@@ -169,76 +216,79 @@ export default function HomePage() {
                     </div>
                 </div>
 
-                {/* Added custom activities list */}
-                {addedCustomActivities.length > 0 ? (
-                    Object.entries(customByCategory).map(([category, catActivities]) => {
-                        const categoryInfo = CATEGORY_INFO[category] || CATEGORY_INFO.lainnya;
-                        return (
-                            <div key={category} style={{ marginBottom: '8px' }}>
-                                <div style={{
-                                    fontSize: '11px',
-                                    color: 'var(--dark-500)',
-                                    marginBottom: '6px',
-                                    marginLeft: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                }}>
-                                    <span>{categoryInfo.icon}</span>
-                                    <span>{categoryInfo.label}</span>
-                                </div>
-                                {catActivities.map(activity => (
-                                    <div key={activity.id} style={{ position: 'relative' }}>
-                                        <ActivityCard activity={activity} />
-                                        {/* Delete button */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                removeCustomActivityFromDay(activity.id);
-                                            }}
-                                            style={{
-                                                position: 'absolute',
-                                                top: '50%',
-                                                right: '48px',
-                                                transform: 'translateY(-50%)',
-                                                width: '28px',
-                                                height: '28px',
-                                                background: 'rgba(239, 68, 68, 0.15)',
-                                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                                borderRadius: 'var(--radius-full)',
-                                                color: '#f87171',
-                                                fontSize: '12px',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                            }}
-                                            title="Hapus dari hari ini"
-                                        >
-                                            ✕
-                                        </button>
+                {/* Added custom activities list (non-amanah only) */}
+                {(() => {
+                    const nonAmanahCategories = Object.entries(customByCategory).filter(([cat]) => cat !== 'amanah');
+                    return nonAmanahCategories.length > 0 ? (
+                        nonAmanahCategories.map(([category, catActivities]) => {
+                            const categoryInfo = CATEGORY_INFO[category] || CATEGORY_INFO.lainnya;
+                            return (
+                                <div key={category} style={{ marginBottom: '8px' }}>
+                                    <div style={{
+                                        fontSize: '11px',
+                                        color: 'var(--dark-500)',
+                                        marginBottom: '6px',
+                                        marginLeft: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                    }}>
+                                        <span>{categoryInfo.icon}</span>
+                                        <span>{categoryInfo.label}</span>
                                     </div>
-                                ))}
-                            </div>
-                        );
-                    })
-                ) : (
-                    <div style={{
-                        padding: '24px',
-                        textAlign: 'center',
-                        color: 'var(--dark-500)',
-                        fontSize: '13px',
-                        background: 'var(--dark-800)',
-                        borderRadius: 'var(--radius-lg)',
-                    }}>
-                        <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
-                        {hasAvailableActivities ? (
-                            <p>Klik <strong>"+ Tambahkan"</strong> untuk menambahkan aktivitas ke hari ini</p>
-                        ) : (
-                            <p>Belum ada aktivitas custom dari admin</p>
-                        )}
-                    </div>
-                )}
+                                    {catActivities.map(activity => (
+                                        <div key={activity.id} style={{ position: 'relative' }}>
+                                            <ActivityCard activity={activity} />
+                                            {/* Delete button */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeCustomActivityFromDay(activity.id);
+                                                }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: '50%',
+                                                    right: '48px',
+                                                    transform: 'translateY(-50%)',
+                                                    width: '28px',
+                                                    height: '28px',
+                                                    background: 'rgba(239, 68, 68, 0.15)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    borderRadius: 'var(--radius-full)',
+                                                    color: '#f87171',
+                                                    fontSize: '12px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                                title="Hapus dari hari ini"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <div style={{
+                            padding: '24px',
+                            textAlign: 'center',
+                            color: 'var(--dark-500)',
+                            fontSize: '13px',
+                            background: 'var(--dark-800)',
+                            borderRadius: 'var(--radius-lg)',
+                        }}>
+                            <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
+                            {hasAvailableActivities ? (
+                                <p>Klik <strong>"+ Tambahkan"</strong> untuk menambahkan aktivitas ke hari ini</p>
+                            ) : (
+                                <p>Belum ada aktivitas custom dari admin</p>
+                            )}
+                        </div>
+                    );
+                })()}
             </section>
 
             {/* Spillover Activities (overnight from previous day) */}

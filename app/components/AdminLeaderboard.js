@@ -154,6 +154,11 @@ export default function AdminLeaderboard() {
     }, [useRpc, filteredDates, selectedGroup]);
 
     // Build ranked users
+    // Build set of amanah activity IDs from custom activities list
+    const amanahIds = useMemo(() => {
+        return new Set(customActivitiesList.filter(ca => ca.category === 'amanah').map(ca => `custom_${ca.id}`));
+    }, [customActivitiesList]);
+
     const rankedUsers = useMemo(() => {
         // RPC mode: data is already aggregated by the database
         if (useRpc === true && rpcLeaderboardData.length > 0) {
@@ -167,16 +172,18 @@ export default function AdminLeaderboard() {
                 sunnah: Number(r.sunnah) || 0,
                 aktivitas: Number(r.aktivitas) || 0,
                 custom: Number(r.custom) || 0,
+                amanah: Number(r.amanah) || 0,
                 total: Number(r.total) || 0,
-                quran_sessions: Number(r.quran_sessions) || 0,
+                quran_ayat: Number(r.quran_ayat) || Number(r.quran_sessions) || 0,
             }));
 
-            // Sort client-side (RPC returns sorted by total, but user might pick different sort)
+            // Sort client-side
             users.sort((a, b) => {
-                if (rankBy === 'quran') return b.quran_sessions - a.quran_sessions;
+                if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
                 if (rankBy === 'sholat') return b.sholat - a.sholat;
                 if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
                 if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
+                if (rankBy === 'amanah') return b.amanah - a.amanah;
                 return b.total - a.total;
             });
 
@@ -200,8 +207,9 @@ export default function AdminLeaderboard() {
                 sunnah: 0,
                 aktivitas: 0,
                 custom: 0,
+                amanah: 0,
                 total: 0,
-                quran_sessions: 0,
+                quran_ayat: 0,
             };
         });
 
@@ -214,16 +222,22 @@ export default function AdminLeaderboard() {
                 userStats[a.user_id].sunnah++;
             } else if (AKTIVITAS_IDS.includes(a.activity_id)) {
                 userStats[a.user_id].aktivitas++;
+            } else if (amanahIds.has(a.activity_id)) {
+                userStats[a.user_id].amanah++;
             } else {
                 userStats[a.user_id].custom++;
             }
             userStats[a.user_id].total++;
         });
 
+        // Quran: count total ayat instead of sessions
         quranData.forEach(q => {
-            if (userStats[q.user_id]) {
-                userStats[q.user_id].quran_sessions++;
-            }
+            if (!userStats[q.user_id]) return;
+            if (!filteredDates.includes(q.read_date)) return;
+            const ayatCount = (q.end_ayat && q.start_ayat)
+                ? Math.max(q.end_ayat - q.start_ayat + 1, 1)
+                : 1;
+            userStats[q.user_id].quran_ayat += ayatCount;
         });
 
         let users = Object.values(userStats);
@@ -232,15 +246,16 @@ export default function AdminLeaderboard() {
         }
 
         users.sort((a, b) => {
-            if (rankBy === 'quran') return b.quran_sessions - a.quran_sessions;
+            if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
             if (rankBy === 'sholat') return b.sholat - a.sholat;
             if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
             if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
+            if (rankBy === 'amanah') return b.amanah - a.amanah;
             return b.total - a.total;
         });
 
         return users;
-    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy]);
+    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy, amanahIds]);
 
     // Group ranking (aggregated scores)
     const groupRanking = useMemo(() => {
@@ -253,7 +268,7 @@ export default function AdminLeaderboard() {
             if (u.user_group && groups[u.user_group]) {
                 groups[u.user_group].members++;
                 groups[u.user_group].totalActivities += u.total;
-                groups[u.user_group].totalSessions += u.quran_sessions;
+                groups[u.user_group].totalSessions += u.quran_ayat;
             }
         });
 
@@ -280,10 +295,11 @@ export default function AdminLeaderboard() {
     }, [filterMode, selectedDay, selectedWeek]);
 
     const getSortValue = (user) => {
-        if (rankBy === 'quran') return `${user.quran_sessions} sesi`;
+        if (rankBy === 'quran') return `${user.quran_ayat} ayat`;
         if (rankBy === 'sholat') return `${user.sholat}x`;
         if (rankBy === 'sunnah') return `${user.sunnah}x`;
         if (rankBy === 'aktivitas') return `${user.aktivitas + user.custom}x`;
+        if (rankBy === 'amanah') return `${user.amanah}x`;
         return `${user.total}x`;
     };
 
@@ -419,6 +435,7 @@ export default function AdminLeaderboard() {
                     { id: 'sholat', label: '🕌 Sholat', color: '#3b82f6' },
                     { id: 'sunnah', label: '⭐ Sunnah', color: '#a78bfa' },
                     { id: 'aktivitas', label: '📋 Aktivitas', color: '#f59e0b' },
+                    { id: 'amanah', label: '🎯 Amanah', color: '#f472b6' },
                     { id: 'quran', label: '📖 Quran', color: '#fbbf24' },
                 ].map(item => (
                     <button
@@ -592,7 +609,7 @@ export default function AdminLeaderboard() {
                                             fontWeight: '700',
                                             color: 'var(--dark-200)',
                                         }}>
-                                            {g.totalActivities} akt • {g.totalSessions} sesi
+                                            {g.totalActivities} akt • {g.totalSessions} ayat
                                         </span>
                                     </div>
                                 </div>
@@ -700,7 +717,8 @@ export default function AdminLeaderboard() {
                                             <span>🕌{user.sholat}</span>
                                             <span>⭐{user.sunnah}</span>
                                             <span>📋{user.aktivitas + user.custom}</span>
-                                            <span>📖{user.quran_sessions}x</span>
+                                            {user.amanah > 0 && <span>🎯{user.amanah}</span>}
+                                            <span>📖{user.quran_ayat} ayat</span>
                                         </div>
                                     </div>
 

@@ -180,6 +180,7 @@ export function AppProvider({ children }) {
                         completed: a.completed,
                         startTime: a.start_time,
                         endTime: a.end_time,
+                        notes: a.notes || null,
                         completedAt: a.completed_at,
                         added: a.added || false,
                         name: a.activity_name,
@@ -301,6 +302,7 @@ export function AppProvider({ children }) {
                         completed: a.completed,
                         startTime: a.start_time,
                         endTime: a.end_time,
+                        notes: a.notes || null,
                         completedAt: a.completed_at,
                     };
                 });
@@ -442,13 +444,14 @@ export function AppProvider({ children }) {
             return {
                 startTime: activityData.startTime,
                 endTime: activityData.endTime,
+                notes: activityData.notes || null,
             };
         }
         return null;
     }, [activities, selectedDateString]);
 
     // Toggle activity completion
-    const toggleActivity = useCallback(async (activityId, startTime = null, endTime = null) => {
+    const toggleActivity = useCallback(async (activityId, startTime = null, endTime = null, notes = null) => {
         if (!user) {
             addToast('Silakan login terlebih dahulu', 'error');
             return;
@@ -470,6 +473,7 @@ export function AppProvider({ children }) {
                 completed: true,
                 startTime: startTime || null,
                 endTime: endTime || null,
+                notes: notes || null,
                 completedAt: new Date().toISOString(),
                 added: currentData?.added || isCustom, // preserve added flag
             };
@@ -505,6 +509,7 @@ export function AppProvider({ children }) {
                     completed_at: new Date().toISOString(),
                     start_time: startTime || null,
                     end_time: endTime || null,
+                    notes: notes || null,
                     added: isCustom ? true : false,
                 };
 
@@ -674,7 +679,7 @@ export function AppProvider({ children }) {
     }, [user]);
 
     // Update activity time data without toggling completion status
-    const updateActivityTime = useCallback(async (activityId, startTime, endTime) => {
+    const updateActivityTime = useCallback(async (activityId, startTime, endTime, notes = null) => {
         if (!user) return;
 
         const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
@@ -691,17 +696,21 @@ export function AppProvider({ children }) {
                     ...currentData,
                     startTime: startTime || null,
                     endTime: endTime || null,
+                    notes: notes !== undefined ? notes : currentData.notes || null,
                 },
             },
         }));
 
         try {
+            const updateData = {
+                start_time: startTime || null,
+                end_time: endTime || null,
+            };
+            if (notes !== undefined) updateData.notes = notes || null;
+
             const { error } = await supabase
                 .from('daily_activities')
-                .update({
-                    start_time: startTime || null,
-                    end_time: endTime || null,
-                })
+                .update(updateData)
                 .eq('user_id', user.id)
                 .eq('activity_date', selectedDateString)
                 .eq('activity_id', activityId);

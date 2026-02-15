@@ -287,14 +287,25 @@ export default function RekapPage() {
         const addedCustom = customActivities.filter(ca => dayActs[ca.id]?.added);
         const allForDay = [...defaults, ...addedCustom];
 
-        const result = allForDay.map(act => ({
-            ...act,
-            completed: dayActs[act.id]?.completed || false,
-            timeData: dayActs[act.id] ? {
-                startTime: dayActs[act.id].startTime || null,
-                endTime: dayActs[act.id].endTime || null,
-            } : null,
-        }));
+        const result = allForDay.map(act => {
+            const dayData = dayActs[act.id];
+            const actNotes = dayData?.notes || null;
+            // For amanah activities, append description to name
+            const displayName = (act.category === 'amanah' && actNotes)
+                ? `${act.name} ${actNotes}`
+                : act.name;
+            return {
+                ...act,
+                name: displayName,
+                originalName: act.name,
+                completed: dayData?.completed || false,
+                timeData: dayData ? {
+                    startTime: dayData.startTime || null,
+                    endTime: dayData.endTime || null,
+                    notes: actNotes,
+                } : null,
+            };
+        });
 
         // Add spillover activities (overnight from previous day)
         Object.entries(dayActs).forEach(([key, data]) => {

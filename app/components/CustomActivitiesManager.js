@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Pagination, { usePagination } from './Pagination';
 
 const CATEGORIES = [
+    { value: 'amanah', label: 'Amanah', icon: '🎯' },
     { value: 'istirahat', label: 'Istirahat', icon: '😴' },
     { value: 'produktifitas', label: 'Produktifitas', icon: '💼' },
     { value: 'sosial', label: 'Sosial', icon: '🤝' },

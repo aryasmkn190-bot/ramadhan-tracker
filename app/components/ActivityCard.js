@@ -17,7 +17,9 @@ export default function ActivityCard({ activity }) {
   const { toggleActivity, updateActivityTime, getActivityTimeData, selectedRamadanDay, isSelectedDayToday } = useApp();
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [sessions, setSessions] = useState([{ start: '', end: '' }]);
+  const [notes, setNotes] = useState('');
   const isWajib = activity.category === 'wajib';
+  const isAmanah = activity.category === 'amanah';
   const [isEditing, setIsEditing] = useState(false); // true when editing a completed activity
 
   // Get saved time data for this activity
@@ -56,16 +58,55 @@ export default function ActivityCard({ activity }) {
       } else {
         setSessions([{ start: '', end: '' }]);
       }
+      // Load saved notes for amanah
+      setNotes(timeData?.notes || '');
     } else {
       // New activity — set default
       const defaultStart = activity.time?.split?.(' - ')?.[0] || activity.time?.replace?.(/[^\d:]/g, '') || '';
       const defaultEnd = isWajib && defaultStart ? addMinutesToTime(defaultStart, 10) : '';
       setSessions([{ start: defaultStart, end: defaultEnd }]);
+      setNotes('');
     }
   }, [showTimeModal]);
 
+  // Get Subuh and Maghrib times from prayer schedule in localStorage
+  const getPrayerTime = (prayer) => {
+    try {
+      const saved = localStorage.getItem('ramadhan_shalat_v2');
+      if (saved) {
+        const { schedule } = JSON.parse(saved);
+        if (schedule?.[prayer]) return schedule[prayer];
+      }
+    } catch (e) { }
+    return null;
+  };
+
   const handleCardClick = (e) => {
     e.stopPropagation();
+
+    // Special handling for Puasa — auto-fill from prayer schedule
+    if (activity.id === 'puasa') {
+      if (activity.completed) {
+        toggleActivity(activity.id);
+      } else {
+        const subuh = getPrayerTime('subuh') || '04:30';
+        const maghrib = getPrayerTime('maghrib') || '18:00';
+        toggleActivity(activity.id, subuh, maghrib);
+      }
+      return;
+    }
+
+    // Special handling for Buka Puasa — maghrib to maghrib+10min
+    if (activity.id === 'buka') {
+      if (activity.completed) {
+        toggleActivity(activity.id);
+      } else {
+        const maghrib = getPrayerTime('maghrib') || '18:00';
+        const endTime = addMinutesToTime(maghrib, 10);
+        toggleActivity(activity.id, maghrib, endTime);
+      }
+      return;
+    }
 
     if (activity.completed) {
       // Open modal in EDIT mode with existing sessions  
@@ -87,6 +128,11 @@ export default function ActivityCard({ activity }) {
   };
 
   const handleSaveTime = () => {
+    // Amanah activities require a description
+    if (isAmanah && !notes.trim()) {
+      return; // Don't save without description
+    }
+
     // Filter out empty sessions
     const validSessions = sessions.filter(s => s.start);
 
@@ -101,20 +147,23 @@ export default function ActivityCard({ activity }) {
       endTimeValue = '__multi__';
     }
 
+    const notesValue = notes.trim() || null;
+
     if (isEditing) {
       // Already completed — just update the time data
-      updateActivityTime(activity.id, startTimeValue, endTimeValue);
+      updateActivityTime(activity.id, startTimeValue, endTimeValue, notesValue);
     } else {
       // New completion
-      if (validSessions.length === 0) {
+      if (validSessions.length === 0 && !notesValue) {
         toggleActivity(activity.id);
       } else {
-        toggleActivity(activity.id, startTimeValue, endTimeValue);
+        toggleActivity(activity.id, startTimeValue, endTimeValue, notesValue);
       }
     }
 
     setShowTimeModal(false);
     setSessions([{ start: '', end: '' }]);
+    setNotes('');
     setIsEditing(false);
   };
 
@@ -205,9 +254,24 @@ export default function ActivityCard({ activity }) {
           {activity.icon}
         </div>
         <div className="activity-info">
-          <div className="activity-name">{activity.name}</div>
+          <div className="activity-name">
+            {activity.name}
+            {isAmanah && activity.completed && timeData?.notes && (
+              <span style={{ fontWeight: '400', color: 'var(--emerald-400)', marginLeft: '4px' }}>
+                {timeData.notes}
+              </span>
+            )}
+          </div>
           <div className="activity-time">
-            {activity.completed && displaySessions.length > 0 ? (
+            {activity.id === 'puasa' && activity.completed && timeData?.startTime ? (
+              <span className="recorded-time">
+                🌅 Subuh {timeData.startTime} — 🌇 Maghrib {timeData.endTime}
+              </span>
+            ) : activity.id === 'buka' && activity.completed && timeData?.startTime ? (
+              <span className="recorded-time">
+                🌇 Maghrib {timeData.startTime} — {timeData.endTime}
+              </span>
+            ) : activity.completed && displaySessions.length > 0 ? (
               <span className="recorded-time">
                 {displaySessions.length > 1 ? (
                   <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -332,6 +396,51 @@ export default function ActivityCard({ activity }) {
               <span style={{ fontSize: '16px' }}>+</span>
               Tambah Sesi
             </button>
+          )}
+
+          {/* Amanah description input */}
+          {isAmanah && (
+            <div style={{
+              margin: '12px 0',
+              padding: '12px',
+              background: 'var(--dark-700)',
+              borderRadius: '10px',
+              border: '1px solid var(--dark-500)',
+            }}>
+              <label style={{
+                display: 'block',
+                fontSize: '12px',
+                fontWeight: '700',
+                color: 'var(--dark-200)',
+                marginBottom: '6px',
+                letterSpacing: '0.5px',
+              }}>
+                🎯 Deskripsi Amanah <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Contoh: Kolektor, Rekrut..."
+                maxLength={50}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  background: 'var(--dark-800)',
+                  border: `1px solid ${!notes.trim() ? '#ef444480' : 'var(--dark-500)'}`,
+                  borderRadius: '8px',
+                  color: 'var(--dark-100)',
+                  fontSize: '14px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {!notes.trim() && (
+                <p style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>
+                  Deskripsi wajib diisi untuk aktivitas Amanah
+                </p>
+              )}
+            </div>
           )}
 
           <div className="time-modal-actions">
