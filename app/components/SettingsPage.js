@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { useTheme } from '../contexts/ThemeContext';
-
-const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
+import { USER_GROUPS } from '../data/userGroups';
 
 export default function SettingsPage() {
     const {

@@ -60,7 +60,7 @@ export function AuthProvider({ children }) {
                 if (error) {
                     // Handle invalid refresh token specifically
                     if (error.message && (
-                        error.message.includes('Refresh Token Not Found') || 
+                        error.message.includes('Refresh Token Not Found') ||
                         error.message.includes('Invalid Refresh Token')
                     )) {
                         console.warn('Session expired or invalid, clearing auth...');
@@ -240,6 +240,7 @@ export function AuthProvider({ children }) {
     };
 
     const isAdmin = profile?.role === 'admin';
+    const isGroupAdmin = profile?.role === 'group_admin';
 
     const value = {
         user,
@@ -247,6 +248,7 @@ export function AuthProvider({ children }) {
         loading,
         configError,
         isAdmin,
+        isGroupAdmin,
         signUp,
         signIn,
         signOut,

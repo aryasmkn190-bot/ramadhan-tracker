@@ -8,20 +8,10 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts';
+import { GROUP_COLORS } from '../data/userGroups';
 
 const RAMADAN_START = new Date('2026-02-19');
 const PIE_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444', '#06b6d4', '#a78bfa', '#fb923c', '#34d399', '#84cc16', '#22d3ee', '#e879f9', '#facc15', '#2dd4bf', '#818cf8', '#f472b6', '#c084fc'];
-
-const GROUP_COLORS = {
-    'PTO CENTRAL': { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
-    'PTO HOLDING': { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a78bfa' },
-    'PTO 1': { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#34d399' },
-    'PTO 2': { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa' },
-    'PTO 3': { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#f472b6' },
-    'PTO 4': { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24' },
-    'PTO 5': { bg: 'rgba(20, 184, 166, 0.15)', border: 'rgba(20, 184, 166, 0.3)', text: '#2dd4bf' },
-    'PTO 6': { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)', text: '#f87171' },
-};
 
 const DEFAULT_PRAYERS = [
     { id: 'subuh', name: 'Sholat Subuh', icon: '🌅', category: 'wajib' },
@@ -51,7 +41,7 @@ const getDateForRamadanDay = (day) => {
     return date.toISOString().split('T')[0];
 };
 
-export default function UserDetailModal({ user, onClose }) {
+export default function UserDetailModal({ user, onClose, adminQuranData, adminActivitiesData }) {
     const [loading, setLoading] = useState(true);
     const [activities, setActivities] = useState({});
     const [quranReadings, setQuranReadings] = useState([]);
@@ -68,42 +58,92 @@ export default function UserDetailModal({ user, onClose }) {
         (async () => {
             setLoading(true);
             try {
-                const [actRes, qRes, cRes] = await Promise.all([
-                    supabase.from('daily_activities').select('*').eq('user_id', user.id),
-                    supabase.from('quran_readings').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-                    supabase.from('custom_activities').select('*').eq('is_active', true),
-                ]);
-                if (actRes.data) {
-                    const byDate = {};
-                    actRes.data.forEach(a => {
-                        if (!byDate[a.activity_date]) byDate[a.activity_date] = {};
-                        byDate[a.activity_date][a.activity_id] = {
-                            completed: a.completed, startTime: a.start_time, endTime: a.end_time,
-                            completedAt: a.completed_at, added: a.added || false,
-                            name: a.activity_name, category: a.activity_category,
-                        };
-                    });
-                    setActivities(byDate);
-                }
-                if (qRes.data) {
-                    setQuranReadings(qRes.data.map(r => ({
-                        id: r.id, readDate: r.read_date, surahNumber: r.surah_number,
-                        startAyat: r.start_ayat, endAyat: r.end_ayat,
+                // If admin data is passed in, use it directly (avoids extra requests)
+                if (adminQuranData && adminActivitiesData) {
+                    // Process activities from admin data (filtered by user)
+                    // Admin activities only have limited fields, so fetch full data for time details
+                    // But we can use the quran data directly
+                    const [actRes, cRes] = await Promise.all([
+                        supabase.from('daily_activities').select('*').eq('user_id', user.id),
+                        supabase.from('custom_activities').select('*').eq('is_active', true),
+                    ]);
+
+                    if (actRes.data) {
+                        const byDate = {};
+                        actRes.data.forEach(a => {
+                            if (!byDate[a.activity_date]) byDate[a.activity_date] = {};
+                            byDate[a.activity_date][a.activity_id] = {
+                                completed: a.completed, startTime: a.start_time, endTime: a.end_time,
+                                completedAt: a.completed_at, added: a.added || false,
+                                name: a.activity_name, category: a.activity_category,
+                            };
+                        });
+                        setActivities(byDate);
+                    }
+
+                    // Use admin quran data filtered by user
+                    const userQuran = adminQuranData.filter(q => q.user_id === user.id);
+                    setQuranReadings(userQuran.map(r => ({
+                        id: r.id || `${r.surah_number}_${r.start_ayat}_${r.end_ayat}`,
+                        readDate: r.read_date,
+                        surahNumber: r.surah_number,
+                        startAyat: r.start_ayat,
+                        endAyat: r.end_ayat,
                     })));
-                }
-                if (cRes.data) {
-                    const ug = user.user_group;
-                    const filtered = cRes.data.filter(i => {
-                        if (!i.target_groups || i.target_groups.length === 0) return true;
-                        return ug && i.target_groups.includes(ug);
-                    });
-                    setCustomActivities(filtered.map(i => ({
-                        id: `custom_${i.id}`, name: i.name, icon: i.icon || '📌', category: i.category, isCustom: true,
-                    })));
+
+                    if (cRes.data) {
+                        const ug = user.user_group;
+                        const filtered = cRes.data.filter(i => {
+                            if (!i.target_groups || i.target_groups.length === 0) return true;
+                            return ug && i.target_groups.includes(ug);
+                        });
+                        setCustomActivities(filtered.map(i => ({
+                            id: `custom_${i.id}`, name: i.name, icon: i.icon || '📌', category: i.category, isCustom: true,
+                        })));
+                    }
+                } else {
+                    // Self-fetch mode (standalone usage)
+                    const [actRes, qRes, cRes] = await Promise.all([
+                        supabase.from('daily_activities').select('*').eq('user_id', user.id),
+                        supabase.from('quran_readings').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+                        supabase.from('custom_activities').select('*').eq('is_active', true),
+                    ]);
+
+                    if (actRes.data) {
+                        const byDate = {};
+                        actRes.data.forEach(a => {
+                            if (!byDate[a.activity_date]) byDate[a.activity_date] = {};
+                            byDate[a.activity_date][a.activity_id] = {
+                                completed: a.completed, startTime: a.start_time, endTime: a.end_time,
+                                completedAt: a.completed_at, added: a.added || false,
+                                name: a.activity_name, category: a.activity_category,
+                            };
+                        });
+                        setActivities(byDate);
+                    }
+
+                    if (qRes.data) {
+                        setQuranReadings(qRes.data.map(r => ({
+                            id: r.id, readDate: r.read_date, surahNumber: r.surah_number,
+                            startAyat: r.start_ayat, endAyat: r.end_ayat,
+                        })));
+                    }
+
+                    if (cRes.data) {
+                        const ug = user.user_group;
+                        const filtered = cRes.data.filter(i => {
+                            if (!i.target_groups || i.target_groups.length === 0) return true;
+                            return ug && i.target_groups.includes(ug);
+                        });
+                        setCustomActivities(filtered.map(i => ({
+                            id: `custom_${i.id}`, name: i.name, icon: i.icon || '📌', category: i.category, isCustom: true,
+                        })));
+                    }
                 }
             } catch (e) { console.error('Error fetching user data:', e); }
             finally { setLoading(false); }
         })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.id]);
 
     // Days to include
@@ -254,7 +294,7 @@ export default function UserDetailModal({ user, onClose }) {
                 </div>
 
                 {/* Scrollable content */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '40px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '120px' }}>
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--dark-400)' }}>
                             <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>

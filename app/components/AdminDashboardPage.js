@@ -5,19 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import AdminLeaderboard from './AdminLeaderboard';
-
-const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
-
-const GROUP_COLORS = {
-    'PTO CENTRAL': { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
-    'PTO HOLDING': { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a78bfa' },
-    'PTO 1': { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#34d399' },
-    'PTO 2': { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa' },
-    'PTO 3': { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#f472b6' },
-    'PTO 4': { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24' },
-    'PTO 5': { bg: 'rgba(20, 184, 166, 0.15)', border: 'rgba(20, 184, 166, 0.3)', text: '#2dd4bf' },
-    'PTO 6': { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)', text: '#f87171' },
-};
+import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
 
 export default function AdminDashboardPage() {
     const { profile } = useAuth();
@@ -216,11 +204,16 @@ export default function AdminDashboardPage() {
                 </div>
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
                     gap: '6px',
                 }}>
                     {USER_GROUPS.map(group => {
                         const colors = GROUP_COLORS[group];
+                        // Short label for compact display
+                        const shortLabel = group
+                            .replace('PTO HOLDING ', 'HOLD ')
+                            .replace('PTO CENTRAL', 'CENTRAL')
+                            .replace('PTO ', 'PTO ');
                         return (
                             <div key={group} style={{
                                 padding: '10px 6px',
@@ -232,8 +225,11 @@ export default function AdminDashboardPage() {
                                 <div style={{ fontSize: '16px', fontWeight: '700', color: colors.text }}>
                                     {stats.groupCounts[group] || 0}
                                 </div>
-                                <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--dark-400)' }}>
-                                    {group}
+                                <div style={{
+                                    fontSize: '9px', fontWeight: '600', color: 'var(--dark-400)',
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                }}>
+                                    {shortLabel}
                                 </div>
                             </div>
                         );

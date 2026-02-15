@@ -5,19 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Pagination, { usePagination } from './Pagination';
-
-const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
-
-const GROUP_COLORS = {
-    'PTO CENTRAL': { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
-    'PTO HOLDING': { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a78bfa' },
-    'PTO 1': { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#34d399' },
-    'PTO 2': { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa' },
-    'PTO 3': { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#f472b6' },
-    'PTO 4': { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24' },
-    'PTO 5': { bg: 'rgba(20, 184, 166, 0.15)', border: 'rgba(20, 184, 166, 0.3)', text: '#2dd4bf' },
-    'PTO 6': { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)', text: '#f87171' },
-};
+import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
 
 export default function AdminMembersPage() {
     const { user } = useAuth();
@@ -329,12 +317,16 @@ export default function AdminMembersPage() {
             {/* Header Stats */}
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: '8px',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '6px',
                 marginBottom: '16px',
             }}>
                 {USER_GROUPS.map(group => {
                     const colors = GROUP_COLORS[group];
+                    const shortLabel = group
+                        .replace('PTO HOLDING ', 'HOLD ')
+                        .replace('PTO CENTRAL', 'CENTRAL')
+                        .replace('PTO ', 'PTO ');
                     return (
                         <button
                             key={group}
@@ -352,8 +344,11 @@ export default function AdminMembersPage() {
                             <div style={{ fontSize: '16px', fontWeight: '700', color: colors.text }}>
                                 {groupStats[group]}
                             </div>
-                            <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--dark-400)' }}>
-                                {group}
+                            <div style={{
+                                fontSize: '9px', fontWeight: '600', color: 'var(--dark-400)',
+                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            }}>
+                                {shortLabel}
                             </div>
                         </button>
                     );
@@ -470,7 +465,7 @@ export default function AdminMembersPage() {
                                 width: '36px',
                                 height: '36px',
                                 borderRadius: 'var(--radius-full)',
-                                background: member.role === 'admin' ? 'var(--gold-gradient)' : 'var(--primary-gradient)',
+                                background: member.role === 'admin' ? 'var(--gold-gradient)' : member.role === 'group_admin' ? 'linear-gradient(135deg, #a78bfa, #7c3aed)' : 'var(--primary-gradient)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -510,6 +505,16 @@ export default function AdminMembersPage() {
                                             borderRadius: 'var(--radius-full)',
                                             fontWeight: '700',
                                         }}>ADMIN</span>
+                                    )}
+                                    {member.role === 'group_admin' && (
+                                        <span style={{
+                                            fontSize: '8px',
+                                            background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
+                                            color: 'white',
+                                            padding: '1px 5px',
+                                            borderRadius: 'var(--radius-full)',
+                                            fontWeight: '700',
+                                        }}>GROUP ADMIN</span>
                                     )}
                                     {member.user_group && groupColor && (
                                         <span style={{
@@ -650,22 +655,26 @@ export default function AdminMembersPage() {
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                     {USER_GROUPS.map(group => {
                                         const colors = GROUP_COLORS[group];
+                                        const shortLabel = group
+                                            .replace('PTO HOLDING ', 'HOLD ')
+                                            .replace('PTO CENTRAL', 'CENTRAL')
+                                            .replace('PTO ', 'PTO ');
                                         return (
                                             <button
                                                 key={group}
                                                 onClick={() => setEditGroup(group)}
                                                 style={{
-                                                    padding: '8px 14px',
+                                                    padding: '6px 10px',
                                                     background: editGroup === group ? colors.bg : 'var(--dark-700)',
                                                     border: editGroup === group ? `2px solid ${colors.border}` : '2px solid var(--dark-600)',
                                                     borderRadius: 'var(--radius-full)',
                                                     color: editGroup === group ? colors.text : 'var(--dark-400)',
                                                     fontWeight: '600',
-                                                    fontSize: '12px',
+                                                    fontSize: '10px',
                                                     cursor: 'pointer',
                                                 }}
                                             >
-                                                {group}
+                                                {shortLabel}
                                             </button>
                                         );
                                     })}
@@ -687,11 +696,27 @@ export default function AdminMembersPage() {
                                             borderRadius: 'var(--radius-md)',
                                             color: editRole === 'member' ? '#34d399' : 'var(--dark-400)',
                                             fontWeight: '600',
-                                            fontSize: '13px',
+                                            fontSize: '12px',
                                             cursor: 'pointer',
                                         }}
                                     >
                                         👤 Member
+                                    </button>
+                                    <button
+                                        onClick={() => setEditRole('group_admin')}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px',
+                                            background: editRole === 'group_admin' ? 'rgba(168, 85, 247, 0.15)' : 'var(--dark-700)',
+                                            border: editRole === 'group_admin' ? '2px solid rgba(168, 85, 247, 0.3)' : '2px solid var(--dark-600)',
+                                            borderRadius: 'var(--radius-md)',
+                                            color: editRole === 'group_admin' ? '#a78bfa' : 'var(--dark-400)',
+                                            fontWeight: '600',
+                                            fontSize: '12px',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        🛡️ Group Admin
                                     </button>
                                     <button
                                         onClick={() => setEditRole('admin')}
@@ -703,7 +728,7 @@ export default function AdminMembersPage() {
                                             borderRadius: 'var(--radius-md)',
                                             color: editRole === 'admin' ? '#fbbf24' : 'var(--dark-400)',
                                             fontWeight: '600',
-                                            fontSize: '13px',
+                                            fontSize: '12px',
                                             cursor: 'pointer',
                                         }}
                                     >
@@ -784,22 +809,26 @@ export default function AdminMembersPage() {
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                 {USER_GROUPS.map(group => {
                                     const colors = GROUP_COLORS[group];
+                                    const shortLabel = group
+                                        .replace('PTO HOLDING ', 'HOLD ')
+                                        .replace('PTO CENTRAL', 'CENTRAL')
+                                        .replace('PTO ', 'PTO ');
                                     return (
                                         <button
                                             key={group}
                                             onClick={() => setImportGroup(group)}
                                             style={{
-                                                padding: '6px 12px',
+                                                padding: '6px 10px',
                                                 background: importGroup === group ? colors.bg : 'var(--dark-700)',
                                                 border: importGroup === group ? `2px solid ${colors.border}` : '2px solid var(--dark-600)',
                                                 borderRadius: 'var(--radius-full)',
                                                 color: importGroup === group ? colors.text : 'var(--dark-400)',
                                                 fontWeight: '600',
-                                                fontSize: '11px',
+                                                fontSize: '10px',
                                                 cursor: 'pointer',
                                             }}
                                         >
-                                            {group}
+                                            {shortLabel}
                                         </button>
                                     );
                                 })}
@@ -877,6 +906,6 @@ export default function AdminMembersPage() {
                     </div>
                 </div>
             </div>
-        </main>
+        </main >
     );
 }

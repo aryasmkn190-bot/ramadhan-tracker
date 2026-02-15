@@ -1,0 +1,414 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import UserDetailModal from './UserDetailModal';
+import Pagination, { usePagination } from './Pagination';
+import { GROUP_COLORS } from '../data/userGroups';
+
+const RAMADAN_START = new Date('2026-02-19');
+
+const getDateForRamadanDay = (day) => {
+    const date = new Date(RAMADAN_START);
+    date.setDate(date.getDate() + day - 1);
+    return date.toISOString().split('T')[0];
+};
+
+export default function GroupRekapPage() {
+    const { profile } = useAuth();
+    const userGroup = profile?.user_group;
+
+    const [profiles, setProfiles] = useState([]);
+    const [allActivities, setAllActivities] = useState([]);
+    const [quranData, setQuranData] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedUser, setSelectedUser] = useState(null);
+
+    // Filters
+    const [filterMode, setFilterMode] = useState('all'); // 'day', 'week', 'all'
+    const [selectedDay, setSelectedDay] = useState(1);
+    const [selectedWeek, setSelectedWeek] = useState(1);
+    const [rankBy, setRankBy] = useState('total');
+
+    // Current Ramadan day
+    const today = new Date();
+    const daysSinceRamadan = Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24));
+    const currentRamadanDay = Math.min(Math.max(daysSinceRamadan + 1, 1), 30);
+
+    useEffect(() => {
+        fetchGroupData();
+    }, [userGroup]);
+
+    const fetchGroupData = async () => {
+        if (!isSupabaseConfigured() || !userGroup) return;
+        setLoading(true);
+
+        try {
+            const [profilesRes, activitiesRes, quranRes] = await Promise.all([
+                supabase.from('profiles').select('id, full_name, user_group, role, email').eq('user_group', userGroup),
+                supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
+                supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
+            ]);
+
+            const groupProfiles = profilesRes.data || [];
+            setProfiles(groupProfiles);
+
+            // Filter activities and quran data to only group members
+            const memberIds = new Set(groupProfiles.map(p => p.id));
+            if (activitiesRes.data) setAllActivities(activitiesRes.data.filter(a => memberIds.has(a.user_id)));
+            if (quranRes.data) setQuranData(quranRes.data.filter(q => memberIds.has(q.user_id)));
+        } catch (error) {
+            console.error('Error fetching group data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Filter dates based on mode
+    const filteredDates = useMemo(() => {
+        if (filterMode === 'day') {
+            return [getDateForRamadanDay(selectedDay)];
+        } else if (filterMode === 'week') {
+            const startDay = (selectedWeek - 1) * 7 + 1;
+            const endDay = Math.min(selectedWeek * 7, 30);
+            const dates = [];
+            for (let d = startDay; d <= endDay; d++) {
+                dates.push(getDateForRamadanDay(d));
+            }
+            return dates;
+        } else {
+            const dates = [];
+            for (let d = 1; d <= 30; d++) {
+                dates.push(getDateForRamadanDay(d));
+            }
+            return dates;
+        }
+    }, [filterMode, selectedDay, selectedWeek]);
+
+    // Activity IDs
+    const SHOLAT_IDS = ['subuh', 'dzuhur', 'ashar', 'maghrib', 'isya'];
+    const SUNNAH_IDS = ['tahajud', 'dhuha', 'tarawih', 'witir'];
+    const AKTIVITAS_IDS = ['sahur', 'puasa', 'buka', 'dzikir', 'sedekah', 'tadarus'];
+
+    // Build ranked users
+    const rankedUsers = useMemo(() => {
+        const relevantActivities = allActivities.filter(a =>
+            a.completed && filteredDates.includes(a.activity_date)
+        );
+
+        const userStats = {};
+        profiles.forEach(p => {
+            userStats[p.id] = {
+                id: p.id,
+                full_name: p.full_name,
+                user_group: p.user_group,
+                email: p.email,
+                role: p.role,
+                sholat: 0,
+                sunnah: 0,
+                aktivitas: 0,
+                custom: 0,
+                total: 0,
+                quran_sessions: 0,
+            };
+        });
+
+        relevantActivities.forEach(a => {
+            if (!userStats[a.user_id]) return;
+            if (SHOLAT_IDS.includes(a.activity_id)) {
+                userStats[a.user_id].sholat++;
+            } else if (SUNNAH_IDS.includes(a.activity_id)) {
+                userStats[a.user_id].sunnah++;
+            } else if (AKTIVITAS_IDS.includes(a.activity_id)) {
+                userStats[a.user_id].aktivitas++;
+            } else {
+                userStats[a.user_id].custom++;
+            }
+            userStats[a.user_id].total++;
+        });
+
+        quranData.forEach(q => {
+            if (userStats[q.user_id]) {
+                userStats[q.user_id].quran_sessions++;
+            }
+        });
+
+        let users = Object.values(userStats);
+        users.sort((a, b) => {
+            if (rankBy === 'quran') return b.quran_sessions - a.quran_sessions;
+            if (rankBy === 'sholat') return b.sholat - a.sholat;
+            if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
+            if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
+            return b.total - a.total;
+        });
+
+        return users;
+    }, [profiles, allActivities, quranData, filteredDates, rankBy]);
+
+    // Stats summary
+    const groupStats = useMemo(() => {
+        const totalMembers = profiles.length;
+        const totalActivities = rankedUsers.reduce((s, u) => s + u.total, 0);
+        const totalQuran = rankedUsers.reduce((s, u) => s + u.quran_sessions, 0);
+        const avgActivities = totalMembers > 0 ? Math.round(totalActivities / totalMembers) : 0;
+        return { totalMembers, totalActivities, totalQuran, avgActivities };
+    }, [profiles, rankedUsers]);
+
+    const getRankDisplay = (index) => {
+        if (index === 0) return '🥇';
+        if (index === 1) return '🥈';
+        if (index === 2) return '🥉';
+        return `#${index + 1}`;
+    };
+
+    const filterLabel = useMemo(() => {
+        if (filterMode === 'day') return `Hari ke-${selectedDay}`;
+        if (filterMode === 'week') return `Minggu ${selectedWeek}`;
+        return '30 Hari';
+    }, [filterMode, selectedDay, selectedWeek]);
+
+    // Pagination
+    const pagination = usePagination(rankedUsers);
+
+    const gc = GROUP_COLORS[userGroup] || { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.3)', text: '#818cf8' };
+
+    if (!userGroup) {
+        return (
+            <section className="page-container" style={{ padding: '16px', paddingBottom: '100px' }}>
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--dark-400)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5 }}>⚠️</div>
+                    <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>Grup belum diatur</div>
+                    <div style={{ fontSize: '13px' }}>Silakan atur grup Anda di halaman Pengaturan terlebih dahulu.</div>
+                </div>
+            </section>
+        );
+    }
+
+    return (
+        <section className="page-container" style={{ padding: '16px', paddingBottom: '100px' }}>
+            {/* Header */}
+            <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '24px' }}>👥</span>
+                    <div>
+                        <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)', margin: 0 }}>
+                            Rekap Anggota
+                        </h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                            <span style={{
+                                fontSize: '11px', fontWeight: '600', padding: '3px 10px',
+                                borderRadius: 'var(--radius-full)',
+                                background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text,
+                            }}>{userGroup}</span>
+                            <span style={{ fontSize: '12px', color: 'var(--dark-400)' }}>
+                                {groupStats.totalMembers} anggota
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Stats Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
+                {[
+                    { label: 'Total Aktivitas', value: groupStats.totalActivities, icon: '📊' },
+                    { label: 'Sesi Tadarus', value: groupStats.totalQuran, icon: '📖' },
+                    { label: 'Rata-rata/Orang', value: groupStats.avgActivities, icon: '📈' },
+                ].map((stat, i) => (
+                    <div key={i} style={{
+                        background: 'var(--dark-800)', borderRadius: 'var(--radius-lg)', padding: '14px 12px',
+                        textAlign: 'center', border: '1px solid var(--dark-700)',
+                    }}>
+                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>{stat.icon}</div>
+                        <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)' }}>{stat.value}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--dark-400)', marginTop: '2px' }}>{stat.label}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Time Filter */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                {[
+                    { value: 'day', label: 'Per Hari' },
+                    { value: 'week', label: 'Per Minggu' },
+                    { value: 'all', label: '30 Hari' },
+                ].map(tab => (
+                    <button key={tab.value} onClick={() => setFilterMode(tab.value)} style={{
+                        flex: 1, padding: '10px 8px',
+                        background: filterMode === tab.value ? 'var(--primary)' : 'var(--dark-800)',
+                        color: filterMode === tab.value ? 'white' : 'var(--dark-300)',
+                        border: filterMode === tab.value ? 'none' : '1px solid var(--dark-700)',
+                        borderRadius: 'var(--radius-md)', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                    }}>{tab.label}</button>
+                ))}
+            </div>
+
+            {/* Day/Week Selector */}
+            {filterMode === 'day' && (
+                <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
+                        {Array.from({ length: 30 }, (_, i) => i + 1).map(d => (
+                            <button key={d} onClick={() => setSelectedDay(d)} style={{
+                                minWidth: '36px', height: '36px',
+                                background: selectedDay === d ? 'var(--primary)' : d === currentRamadanDay ? 'rgba(16, 185, 129, 0.15)' : 'var(--dark-800)',
+                                color: selectedDay === d ? 'white' : d === currentRamadanDay ? '#10b981' : 'var(--dark-300)',
+                                border: d === currentRamadanDay && selectedDay !== d ? '1px solid rgba(16, 185, 129, 0.3)' : selectedDay === d ? 'none' : '1px solid var(--dark-700)',
+                                borderRadius: 'var(--radius-md)', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                            }}>{d}</button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {filterMode === 'week' && (
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                    {[1, 2, 3, 4, 5].map(w => (
+                        <button key={w} onClick={() => setSelectedWeek(w)} style={{
+                            flex: 1, padding: '10px 8px',
+                            background: selectedWeek === w ? 'var(--primary)' : 'var(--dark-800)',
+                            color: selectedWeek === w ? 'white' : 'var(--dark-300)',
+                            border: selectedWeek === w ? 'none' : '1px solid var(--dark-700)',
+                            borderRadius: 'var(--radius-md)', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                        }}>M{w}</button>
+                    ))}
+                </div>
+            )}
+
+            {/* Sort By */}
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', overflowX: 'auto' }}>
+                {[
+                    { value: 'total', label: '🏆 Total' },
+                    { value: 'sholat', label: '🕌 Sholat' },
+                    { value: 'sunnah', label: '⭐ Sunnah' },
+                    { value: 'aktivitas', label: '📋 Aktivitas' },
+                    { value: 'quran', label: '📖 Quran' },
+                ].map(opt => (
+                    <button key={opt.value} onClick={() => setRankBy(opt.value)} style={{
+                        padding: '6px 12px', whiteSpace: 'nowrap',
+                        background: rankBy === opt.value ? 'rgba(16,185,129,0.15)' : 'var(--dark-800)',
+                        color: rankBy === opt.value ? '#10b981' : 'var(--dark-400)',
+                        border: rankBy === opt.value ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--dark-700)',
+                        borderRadius: 'var(--radius-full)', fontSize: '11px', fontWeight: '600', cursor: 'pointer',
+                    }}>{opt.label}</button>
+                ))}
+            </div>
+
+            {/* Period Label */}
+            <div style={{ fontSize: '12px', color: 'var(--dark-400)', marginBottom: '12px', fontWeight: '600' }}>
+                📅 {filterLabel} • {rankedUsers.length} anggota
+            </div>
+
+            {/* Loading */}
+            {loading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--dark-400)' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
+                    Memuat data anggota...
+                </div>
+            ) : rankedUsers.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--dark-500)' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.5 }}>👥</div>
+                    Belum ada anggota di grup ini
+                </div>
+            ) : (
+                <>
+                    {/* User List */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {pagination.paginatedItems.map((user, idx) => {
+                            const startIndex = pagination.showAll ? 0 : (pagination.currentPage - 1) * pagination.itemsPerPage;
+                            const globalIndex = startIndex + idx;
+                            return (
+                                <div
+                                    key={user.id}
+                                    onClick={() => setSelectedUser(user)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px',
+                                        background: 'var(--dark-800)', borderRadius: 'var(--radius-lg)',
+                                        padding: '14px', cursor: 'pointer',
+                                        border: '1px solid var(--dark-700)',
+                                        transition: 'all 0.2s ease',
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.background = 'var(--dark-700)';
+                                        e.currentTarget.style.borderColor = gc.border;
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.background = 'var(--dark-800)';
+                                        e.currentTarget.style.borderColor = 'var(--dark-700)';
+                                    }}
+                                >
+                                    {/* Rank */}
+                                    <div style={{
+                                        width: '32px', textAlign: 'center',
+                                        fontSize: globalIndex < 3 ? '20px' : '14px',
+                                        fontWeight: '700',
+                                        color: globalIndex < 3 ? undefined : 'var(--dark-400)',
+                                    }}>
+                                        {getRankDisplay(globalIndex)}
+                                    </div>
+
+                                    {/* User Info */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                            fontSize: '14px', fontWeight: '600', color: 'var(--dark-100)',
+                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        }}>
+                                            {user.full_name || 'User'}
+                                            {user.role === 'group_admin' && (
+                                                <span style={{
+                                                    fontSize: '9px', marginLeft: '6px', padding: '2px 6px',
+                                                    background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
+                                                    borderRadius: 'var(--radius-full)', fontWeight: '600',
+                                                }}>ADMIN</span>
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px' }}>
+                                            🕌 {user.sholat} • ⭐ {user.sunnah} • 📋 {user.aktivitas + user.custom} • 📖 {user.quran_sessions}
+                                        </div>
+                                    </div>
+
+                                    {/* Total */}
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981' }}>
+                                            {rankBy === 'quran' ? user.quran_sessions :
+                                                rankBy === 'sholat' ? user.sholat :
+                                                    rankBy === 'sunnah' ? user.sunnah :
+                                                        rankBy === 'aktivitas' ? user.aktivitas + user.custom :
+                                                            user.total}
+                                        </div>
+                                        <div style={{ fontSize: '10px', color: 'var(--dark-500)' }}>
+                                            {rankBy === 'quran' ? 'sesi' : 'aktivitas'}
+                                        </div>
+                                    </div>
+
+                                    {/* Arrow */}
+                                    <div style={{ color: 'var(--dark-500)', fontSize: '16px' }}>›</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Pagination */}
+                    <Pagination
+                        currentPage={pagination.currentPage}
+                        totalPages={pagination.totalPages}
+                        onPageChange={pagination.goToPage}
+                        totalItems={pagination.totalItems}
+                        itemsPerPage={pagination.itemsPerPage}
+                        onPerPageChange={pagination.setPerPage}
+                    />
+                </>
+            )}
+
+            {/* User Detail Modal */}
+            {selectedUser && (
+                <UserDetailModal
+                    user={selectedUser}
+                    onClose={() => setSelectedUser(null)}
+                    adminQuranData={quranData}
+                    adminActivitiesData={allActivities}
+                />
+            )}
+        </section>
+    );
+}

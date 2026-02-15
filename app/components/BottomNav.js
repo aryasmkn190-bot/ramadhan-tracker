@@ -5,14 +5,21 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function BottomNav() {
     const { currentPage, setCurrentPage } = useApp();
-    const { isAdmin } = useAuth();
+    const { isAdmin, isGroupAdmin } = useAuth();
 
     // Admin has a completely different navigation
+    // Group admin gets regular nav + extra "Rekap Anggota" tab
     const navItems = isAdmin ? [
         { id: 'admin_dashboard', icon: '📊', label: 'Dashboard' },
         { id: 'admin_members', icon: '👥', label: 'Anggota' },
         { id: 'admin_activities', icon: '📋', label: 'Aktivitas' },
         { id: 'admin_announcements', icon: '📢', label: 'Pengumuman' },
+        { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
+    ] : isGroupAdmin ? [
+        { id: 'home', icon: '🏠', label: 'Beranda' },
+        { id: 'quran', icon: '📖', label: 'Quran' },
+        { id: 'rekap', icon: '📊', label: 'Rekap' },
+        { id: 'group_rekap', icon: '👥', label: 'Anggota' },
         { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
     ] : [
         { id: 'home', icon: '🏠', label: 'Beranda' },

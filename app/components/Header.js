@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
-
-const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
+import { USER_GROUPS } from '../data/userGroups';
 
 export default function Header() {
     const { currentRamadanDay, announcements, addToast } = useApp();

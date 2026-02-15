@@ -4,19 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import UserDetailModal from './UserDetailModal';
 import Pagination, { usePagination } from './Pagination';
-
-const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
-
-const GROUP_COLORS = {
-    'PTO CENTRAL': { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
-    'PTO HOLDING': { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a78bfa' },
-    'PTO 1': { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#34d399' },
-    'PTO 2': { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa' },
-    'PTO 3': { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#f472b6' },
-    'PTO 4': { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24' },
-    'PTO 5': { bg: 'rgba(20, 184, 166, 0.15)', border: 'rgba(20, 184, 166, 0.3)', text: '#2dd4bf' },
-    'PTO 6': { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)', text: '#f87171' },
-};
+import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
 
 const RAMADAN_START = new Date('2026-02-19');
 
@@ -58,7 +46,7 @@ export default function AdminLeaderboard() {
             const [profilesRes, activitiesRes, quranRes, customActRes] = await Promise.all([
                 supabase.from('profiles').select('id, full_name, user_group, role, email'),
                 supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
-                supabase.from('quran_readings').select('user_id, surah_number, start_ayat, end_ayat'),
+                supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
                 supabase.from('custom_activities').select('id, name, icon, category'),
             ]);
 
@@ -394,23 +382,28 @@ export default function AdminLeaderboard() {
                 </button>
                 {USER_GROUPS.map(group => {
                     const colors = GROUP_COLORS[group];
+                    const shortLabel = group
+                        .replace('PTO HOLDING ', 'HOLD ')
+                        .replace('PTO CENTRAL', 'CENTRAL')
+                        .replace('PTO ', 'PTO ');
                     return (
                         <button
                             key={group}
                             onClick={() => setSelectedGroup(group)}
                             style={{
-                                padding: '5px 10px',
+                                padding: '5px 8px',
                                 borderRadius: 'var(--radius-full)',
                                 border: 'none',
                                 background: selectedGroup === group ? colors.bg : 'var(--dark-700)',
                                 color: selectedGroup === group ? colors.text : 'var(--dark-400)',
-                                fontSize: '11px',
+                                fontSize: '10px',
                                 fontWeight: '600',
                                 cursor: 'pointer',
                                 flexShrink: 0,
+                                whiteSpace: 'nowrap',
                             }}
                         >
-                            {group}
+                            {shortLabel}
                         </button>
                     );
                 })}
@@ -476,10 +469,14 @@ export default function AdminLeaderboard() {
                                         {getRankDisplay(i)}
                                     </span>
                                     <span style={{
-                                        width: '40px',
+                                        width: '90px',
                                         fontWeight: '700',
-                                        fontSize: '12px',
+                                        fontSize: '11px',
                                         color: colors.text,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        flexShrink: 0,
                                     }}>
                                         {g.group}
                                     </span>
@@ -656,6 +653,8 @@ export default function AdminLeaderboard() {
                 <UserDetailModal
                     user={selectedUser}
                     onClose={() => setSelectedUser(null)}
+                    adminQuranData={quranData}
+                    adminActivitiesData={allActivities}
                 />
             )}
         </section>

@@ -389,19 +389,30 @@ export default function DailyClockChart({ dayActivities }) {
                         const is6or18 = h === 6 || h === 18;
                         const isMain = h % 3 === 0;
                         return (
-                            <text
-                                key={`lbl-${h}`}
-                                x={p.x}
-                                y={p.y}
-                                textAnchor="middle"
-                                dominantBaseline="central"
-                                fill={is6or18 ? '#d97706' : isMain ? 'var(--dark-300)' : 'var(--dark-400)'}
-                                fontSize={is6or18 ? '11' : isMain ? '9' : '8'}
-                                fontWeight={is6or18 ? '700' : isMain ? '600' : '400'}
-                                fontFamily="system-ui, sans-serif"
-                            >
-                                {String(h).padStart(2, '0')}.00
-                            </text>
+                            <g key={`lbl-${h}`}>
+                                {is6or18 && (
+                                    <rect
+                                        x={p.x - 16}
+                                        y={p.y - 8}
+                                        width="32"
+                                        height="16"
+                                        fill="var(--dark-800)"
+                                        rx="4"
+                                    />
+                                )}
+                                <text
+                                    x={p.x}
+                                    y={p.y}
+                                    textAnchor="middle"
+                                    dominantBaseline="central"
+                                    fill={is6or18 ? '#d97706' : isMain ? 'var(--dark-300)' : 'var(--dark-400)'}
+                                    fontSize={is6or18 ? '11' : isMain ? '9' : '8'}
+                                    fontWeight={is6or18 ? '700' : isMain ? '600' : '400'}
+                                    fontFamily="system-ui, sans-serif"
+                                >
+                                    {String(h).padStart(2, '0')}.00
+                                </text>
+                            </g>
                         );
                     })}
 

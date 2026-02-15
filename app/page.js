@@ -14,13 +14,14 @@ import AdminDashboardPage from './components/AdminDashboardPage';
 import AdminMembersPage from './components/AdminMembersPage';
 import AdminActivitiesPage from './components/AdminActivitiesPage';
 import AdminAnnouncementsPage from './components/AdminAnnouncementsPage';
+import GroupRekapPage from './components/GroupRekapPage';
 import AuthPage from './components/AuthPage';
 import RekapPage from './components/RekapPage';
 import Toast from './components/Toast';
 
 function AppContent() {
   const { currentPage, isLoading: appLoading } = useApp();
-  const { user, loading: authLoading, isAdmin } = useAuth();
+  const { user, loading: authLoading, isAdmin, isGroupAdmin } = useAuth();
 
   // Show loading state
   if (authLoading) {
@@ -83,7 +84,7 @@ function AppContent() {
       }
     }
 
-    // Regular user pages
+    // Regular user pages (including group admin)
     switch (currentPage) {
       case 'home':
         return <HomePage />;
@@ -97,6 +98,8 @@ function AppContent() {
         return <LeaderboardPage />;
       case 'rekap':
         return <RekapPage />;
+      case 'group_rekap':
+        return isGroupAdmin ? <GroupRekapPage /> : <HomePage />;
       default:
         return <HomePage />;
     }
