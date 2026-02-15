@@ -29,40 +29,63 @@ export default function AdminDashboardPage() {
         if (!isSupabaseConfigured()) return;
         setLoading(true);
         try {
-            const [profilesRes, activitiesRes, quranRes] = await Promise.all([
-                supabase.from('profiles').select('id, role, user_group, created_at'),
-                supabase.from('daily_activities').select('id', { count: 'exact', head: true }).eq('completed', true),
-                supabase.from('quran_readings').select('id', { count: 'exact', head: true }),
-            ]);
+            // Try optimized RPC function first
+            const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_stats');
 
-            const profiles = profilesRes.data || [];
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-
-            const groupCounts = {};
-            USER_GROUPS.forEach(g => { groupCounts[g] = 0; });
-            let admins = 0;
-            let newThisWeek = 0;
-
-            profiles.forEach(p => {
-                if (p.role === 'admin') admins++;
-                if (p.user_group && groupCounts[p.user_group] !== undefined) {
-                    groupCounts[p.user_group]++;
+            if (!rpcError && rpcData) {
+                const groupCounts = {};
+                USER_GROUPS.forEach(g => { groupCounts[g] = 0; });
+                if (rpcData.groupCounts) {
+                    Object.entries(rpcData.groupCounts).forEach(([g, cnt]) => {
+                        if (groupCounts[g] !== undefined) groupCounts[g] = cnt;
+                    });
                 }
-                if (p.created_at && new Date(p.created_at) > weekAgo) {
-                    newThisWeek++;
-                }
-            });
 
+                setStats({
+                    totalMembers: rpcData.totalMembers || 0,
+                    admins: rpcData.admins || 0,
+                    newThisWeek: rpcData.newThisWeek || 0,
+                    totalQuranReadings: rpcData.totalQuranReadings || 0,
+                    totalActivities: rpcData.totalActivities || 0,
+                    groupCounts,
+                });
+            } else {
+                // Fallback to original queries if RPC not available
+                console.warn('RPC not available, using fallback queries:', rpcError?.message);
+                const [profilesRes, activitiesRes, quranRes] = await Promise.all([
+                    supabase.from('profiles').select('id, role, user_group, created_at'),
+                    supabase.from('daily_activities').select('id', { count: 'exact', head: true }).eq('completed', true),
+                    supabase.from('quran_readings').select('id', { count: 'exact', head: true }),
+                ]);
 
-            setStats({
-                totalMembers: profiles.length,
-                admins,
-                newThisWeek,
-                totalQuranReadings: quranRes.count || 0,
-                totalActivities: activitiesRes.count || 0,
-                groupCounts,
-            });
+                const profiles = profilesRes.data || [];
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+
+                const groupCounts = {};
+                USER_GROUPS.forEach(g => { groupCounts[g] = 0; });
+                let admins = 0;
+                let newThisWeek = 0;
+
+                profiles.forEach(p => {
+                    if (p.role === 'admin') admins++;
+                    if (p.user_group && groupCounts[p.user_group] !== undefined) {
+                        groupCounts[p.user_group]++;
+                    }
+                    if (p.created_at && new Date(p.created_at) > weekAgo) {
+                        newThisWeek++;
+                    }
+                });
+
+                setStats({
+                    totalMembers: profiles.length,
+                    admins,
+                    newThisWeek,
+                    totalQuranReadings: quranRes.count || 0,
+                    totalActivities: activitiesRes.count || 0,
+                    groupCounts,
+                });
+            }
         } catch (error) {
             console.error('Error fetching stats:', error);
         } finally {

@@ -45,19 +45,34 @@ export default function GroupRekapPage() {
         setLoading(true);
 
         try {
-            const [profilesRes, activitiesRes, quranRes] = await Promise.all([
-                supabase.from('profiles').select('id, full_name, user_group, role, email').eq('user_group', userGroup),
-                supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
-                supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
-            ]);
+            // Step 1: Fetch group members first
+            const profilesRes = await supabase
+                .from('profiles')
+                .select('id, full_name, user_group, role, email')
+                .eq('user_group', userGroup);
 
             const groupProfiles = profilesRes.data || [];
             setProfiles(groupProfiles);
 
-            // Filter activities and quran data to only group members
-            const memberIds = new Set(groupProfiles.map(p => p.id));
-            if (activitiesRes.data) setAllActivities(activitiesRes.data.filter(a => memberIds.has(a.user_id)));
-            if (quranRes.data) setQuranData(quranRes.data.filter(q => memberIds.has(q.user_id)));
+            // Step 2: Fetch only activities & quran data for group members (server-side filter)
+            const memberIds = groupProfiles.map(p => p.id);
+
+            if (memberIds.length > 0) {
+                const [activitiesRes, quranRes] = await Promise.all([
+                    supabase.from('daily_activities')
+                        .select('user_id, activity_date, activity_id, completed')
+                        .in('user_id', memberIds),
+                    supabase.from('quran_readings')
+                        .select('user_id, read_date, surah_number, start_ayat, end_ayat')
+                        .in('user_id', memberIds),
+                ]);
+
+                if (activitiesRes.data) setAllActivities(activitiesRes.data);
+                if (quranRes.data) setQuranData(quranRes.data);
+            } else {
+                setAllActivities([]);
+                setQuranData([]);
+            }
         } catch (error) {
             console.error('Error fetching group data:', error);
         } finally {

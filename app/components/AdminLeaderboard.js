@@ -34,6 +34,9 @@ export default function AdminLeaderboard() {
     const daysSinceRamadan = Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24));
     const currentRamadanDay = Math.min(Math.max(daysSinceRamadan + 1, 1), 30);
 
+    // Track whether we're using optimized RPC or fallback
+    const [useRpc, setUseRpc] = useState(null);
+
     useEffect(() => {
         fetchAllData();
     }, []);
@@ -43,22 +46,67 @@ export default function AdminLeaderboard() {
         setLoading(true);
 
         try {
-            const [profilesRes, activitiesRes, quranRes, customActRes] = await Promise.all([
-                supabase.from('profiles').select('id, full_name, user_group, role, email'),
-                supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
-                supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
-                supabase.from('custom_activities').select('id, name, icon, category'),
-            ]);
-
-            if (profilesRes.data) setProfiles(profilesRes.data);
-            if (activitiesRes.data) setAllActivities(activitiesRes.data);
-            if (quranRes.data) setQuranData(quranRes.data);
+            // Always fetch custom activities (small dataset)
+            const customActRes = await supabase.from('custom_activities').select('id, name, icon, category');
             if (customActRes.data) setCustomActivitiesList(customActRes.data);
+
+            // Try optimized RPC first — aggregation done on database server
+            const { data: rpcData, error: rpcError } = await supabase.rpc('get_leaderboard');
+
+            if (!rpcError && rpcData && rpcData.length > 0) {
+                // RPC returns pre-aggregated data, map to expected format
+                const mappedProfiles = rpcData.map(r => ({
+                    id: r.user_id,
+                    full_name: r.full_name,
+                    user_group: r.user_group,
+                    email: r.email,
+                    role: r.role,
+                }));
+                setProfiles(mappedProfiles);
+
+                // Store RPC data for rankedUsers computation
+                // We need to handle date filtering differently with RPC
+                setUseRpc(true);
+
+                // For "all" filter mode (default), we can use RPC data directly
+                // For date-filtered views, we'll re-call RPC with date params
+                setAllActivities([]); // Not needed when using RPC
+                setQuranData([]); // Not needed when using RPC
+            } else {
+                // Fallback to original queries if RPC not available
+                console.warn('Leaderboard RPC not available, using fallback:', rpcError?.message);
+                setUseRpc(false);
+
+                const [profilesRes, activitiesRes, quranRes] = await Promise.all([
+                    supabase.from('profiles').select('id, full_name, user_group, role, email'),
+                    supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
+                    supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
+                ]);
+
+                if (profilesRes.data) setProfiles(profilesRes.data);
+                if (activitiesRes.data) setAllActivities(activitiesRes.data);
+                if (quranRes.data) setQuranData(quranRes.data);
+            }
         } catch (error) {
             console.error('Error fetching admin leaderboard data:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    // Fetch leaderboard data for specific date range using RPC
+    const fetchRpcLeaderboard = async (dateFrom, dateTo, groupFilter) => {
+        const params = {};
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo) params.date_to = dateTo;
+        if (groupFilter && groupFilter !== 'all') params.group_filter = groupFilter;
+
+        const { data, error } = await supabase.rpc('get_leaderboard', params);
+        if (error) {
+            console.error('RPC leaderboard error:', error);
+            return null;
+        }
+        return data;
     };
 
     // Filter dates based on mode
@@ -83,19 +131,63 @@ export default function AdminLeaderboard() {
         }
     }, [filterMode, selectedDay, selectedWeek]);
 
-    // Define activity categories
+    // Define activity categories (used in fallback mode)
     const SHOLAT_IDS = ['subuh', 'dzuhur', 'ashar', 'maghrib', 'isya'];
     const SUNNAH_IDS = ['tahajud', 'dhuha', 'tarawih', 'witir'];
     const AKTIVITAS_IDS = ['sahur', 'puasa', 'buka', 'dzikir', 'sedekah', 'tadarus'];
 
+    // RPC leaderboard data (pre-aggregated from database)
+    const [rpcLeaderboardData, setRpcLeaderboardData] = useState([]);
+
+    // Re-fetch RPC data when filters change
+    useEffect(() => {
+        if (useRpc !== true) return;
+
+        const fetchFiltered = async () => {
+            const dateFrom = filteredDates[0];
+            const dateTo = filteredDates[filteredDates.length - 1];
+            const data = await fetchRpcLeaderboard(dateFrom, dateTo, selectedGroup);
+            if (data) setRpcLeaderboardData(data);
+        };
+
+        fetchFiltered();
+    }, [useRpc, filteredDates, selectedGroup]);
+
     // Build ranked users
     const rankedUsers = useMemo(() => {
-        // Filter activities by date range
+        // RPC mode: data is already aggregated by the database
+        if (useRpc === true && rpcLeaderboardData.length > 0) {
+            let users = rpcLeaderboardData.map(r => ({
+                id: r.user_id,
+                full_name: r.full_name,
+                user_group: r.user_group,
+                email: r.email,
+                role: r.role,
+                sholat: Number(r.sholat) || 0,
+                sunnah: Number(r.sunnah) || 0,
+                aktivitas: Number(r.aktivitas) || 0,
+                custom: Number(r.custom) || 0,
+                total: Number(r.total) || 0,
+                quran_sessions: Number(r.quran_sessions) || 0,
+            }));
+
+            // Sort client-side (RPC returns sorted by total, but user might pick different sort)
+            users.sort((a, b) => {
+                if (rankBy === 'quran') return b.quran_sessions - a.quran_sessions;
+                if (rankBy === 'sholat') return b.sholat - a.sholat;
+                if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
+                if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
+                return b.total - a.total;
+            });
+
+            return users;
+        }
+
+        // Fallback mode: client-side aggregation (original behavior)
         const relevantActivities = allActivities.filter(a =>
             a.completed && filteredDates.includes(a.activity_date)
         );
 
-        // Group by user
         const userStats = {};
         profiles.forEach(p => {
             userStats[p.id] = {
@@ -113,7 +205,6 @@ export default function AdminLeaderboard() {
             };
         });
 
-        // Count activities
         relevantActivities.forEach(a => {
             if (!userStats[a.user_id]) return;
 
@@ -129,30 +220,27 @@ export default function AdminLeaderboard() {
             userStats[a.user_id].total++;
         });
 
-        // Add quran data
         quranData.forEach(q => {
             if (userStats[q.user_id]) {
                 userStats[q.user_id].quran_sessions++;
             }
         });
 
-        // Filter by group
         let users = Object.values(userStats);
         if (selectedGroup !== 'all') {
             users = users.filter(u => u.user_group === selectedGroup);
         }
 
-        // Sort
         users.sort((a, b) => {
             if (rankBy === 'quran') return b.quran_sessions - a.quran_sessions;
             if (rankBy === 'sholat') return b.sholat - a.sholat;
             if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
             if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
-            return b.total - a.total; // 'total'
+            return b.total - a.total;
         });
 
         return users;
-    }, [profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy]);
+    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy]);
 
     // Group ranking (aggregated scores)
     const groupRanking = useMemo(() => {
