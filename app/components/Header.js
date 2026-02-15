@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 
+const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
+
 export default function Header() {
     const { currentRamadanDay, announcements, addToast } = useApp();
     const { user, profile, signOut, updateProfile } = useAuth();
@@ -444,11 +446,9 @@ export default function Header() {
                                 }}>
                                     Grup / Komunitas
                                 </label>
-                                <input
-                                    type="text"
+                                <select
                                     value={editGroup}
                                     onChange={(e) => setEditGroup(e.target.value)}
-                                    placeholder="Nama grup (opsional)"
                                     style={{
                                         width: '100%',
                                         padding: '12px 14px',
@@ -460,10 +460,20 @@ export default function Header() {
                                         fontFamily: 'inherit',
                                         outline: 'none',
                                         transition: 'border-color 0.2s ease',
+                                        appearance: 'none',
+                                        backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239ca3af%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`,
+                                        backgroundRepeat: 'no-repeat',
+                                        backgroundPosition: 'right 12px top 50%',
+                                        backgroundSize: '12px auto',
                                     }}
                                     onFocus={(e) => e.target.style.borderColor = 'var(--emerald-500)'}
                                     onBlur={(e) => e.target.style.borderColor = 'var(--dark-600)'}
-                                />
+                                >
+                                    <option value="">Pilih Grup / Komunitas</option>
+                                    {USER_GROUPS.map(group => (
+                                        <option key={group} value={group}>{group}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
 

@@ -239,187 +239,189 @@ export default function UserDetailModal({ user, onClose }) {
     const gc = GROUP_COLORS[user.user_group];
 
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', flexDirection: 'column', background: 'var(--dark-900, #0f1117)' }}>
-            {/* Header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--dark-700)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                <button onClick={onClose} style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: 'none', borderRadius: 'var(--radius-md)', color: 'white', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name || 'User'}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                        {gc && <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 8px', borderRadius: 'var(--radius-full)', background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text }}>{user.user_group}</span>}
-                        <span style={{ fontSize: '11px', color: 'var(--dark-400)' }}>{user.email}</span>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'center', background: 'rgba(0, 0, 0, 0.6)' }}>
+            <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', background: 'var(--dark-900, #0f1117)', position: 'relative' }}>
+                {/* Header */}
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--dark-700)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                    <button onClick={onClose} style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: 'none', borderRadius: 'var(--radius-md)', color: 'white', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name || 'User'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                            {gc && <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 8px', borderRadius: 'var(--radius-full)', background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text }}>{user.user_group}</span>}
+                            <span style={{ fontSize: '11px', color: 'var(--dark-400)' }}>{user.email}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Scrollable content */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '40px' }}>
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--dark-400)' }}>
-                        <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
-                        Memuat data...
-                    </div>
-                ) : (
-                    <>
-                        {/* Filter Tabs */}
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                            {[{ value: 'day', label: 'Per Hari' }, { value: '7days', label: '7 Hari' }, { value: '30days', label: '30 Hari' }].map(tab => (
-                                <button key={tab.value} onClick={() => setFilterMode(tab.value)} style={{
-                                    flex: 1, padding: '10px 8px', background: filterMode === tab.value ? 'var(--primary)' : 'var(--dark-800)',
-                                    color: filterMode === tab.value ? 'white' : 'var(--dark-300)', border: filterMode === tab.value ? 'none' : '1px solid var(--dark-700)',
-                                    borderRadius: 'var(--radius-md)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s ease',
-                                }}>{tab.label}</button>
-                            ))}
+                {/* Scrollable content */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '40px' }}>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--dark-400)' }}>
+                            <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
+                            Memuat data...
                         </div>
-
-                        {/* Day Picker */}
-                        {(filterMode === 'day' || filterMode === '7days') && (
-                            <div style={{ marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
-                                    <button onClick={() => setSelectedDay(d => Math.max(1, d - 1))} disabled={selectedDay <= 1}
-                                        style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay <= 1 ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay <= 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>◀</button>
-                                    <div style={{ flex: 1, textAlign: 'center' }}>
-                                        <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)' }}>
-                                            {filterMode === 'day' ? `Ramadhan Hari ke-${selectedDay}` : `Hari ${Math.max(1, selectedDay - 6)} – ${selectedDay}`}
-                                        </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px' }}>
-                                            {filterMode === 'day' ? getDateForRamadanDay(selectedDay) : `${daysToInclude.length} hari`}
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setSelectedDay(d => Math.min(30, d + 1))} disabled={selectedDay >= 30}
-                                        style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay >= 30 ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay >= 30 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</button>
-                                </div>
-                                <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
-                                    {Array.from({ length: 30 }, (_, i) => i + 1).map(day => (
-                                        <button key={day} onClick={() => setSelectedDay(day)} style={{
-                                            minWidth: '36px', height: '32px',
-                                            background: selectedDay === day ? 'var(--primary)' : (filterMode === '7days' && daysToInclude.includes(day)) ? 'rgba(59, 130, 246, 0.2)' : 'var(--dark-800)',
-                                            color: selectedDay === day ? 'white' : (filterMode === '7days' && daysToInclude.includes(day)) ? 'var(--primary)' : 'var(--dark-400)',
-                                            border: selectedDay === day ? 'none' : '1px solid var(--dark-700)', borderRadius: 'var(--radius-full)',
-                                            fontSize: '12px', fontWeight: selectedDay === day ? '700' : '500', cursor: 'pointer', flexShrink: 0,
-                                        }}>{day}</button>
-                                    ))}
-                                </div>
+                    ) : (
+                        <>
+                            {/* Filter Tabs */}
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                                {[{ value: 'day', label: 'Per Hari' }, { value: '7days', label: '7 Hari' }, { value: '30days', label: '30 Hari' }].map(tab => (
+                                    <button key={tab.value} onClick={() => setFilterMode(tab.value)} style={{
+                                        flex: 1, padding: '10px 8px', background: filterMode === tab.value ? 'var(--primary)' : 'var(--dark-800)',
+                                        color: filterMode === tab.value ? 'white' : 'var(--dark-300)', border: filterMode === tab.value ? 'none' : '1px solid var(--dark-700)',
+                                        borderRadius: 'var(--radius-md)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s ease',
+                                    }}>{tab.label}</button>
+                                ))}
                             </div>
-                        )}
 
-                        {/* Stats Cards */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
-                            <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
-                                <div style={{ fontSize: '26px', fontWeight: '700', color: '#10b981' }}>{stats.totalCompleted}</div>
-                                <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Total Selesai</div>
-                            </div>
-                            <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
-                                <div style={{ fontSize: '26px', fontWeight: '700', color: '#f59e0b' }}>{stats.completionRate}%</div>
-                                <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Pencapaian</div>
-                            </div>
-                            {filterMode !== 'day' && (<>
-                                <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
-                                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#3b82f6' }}>{stats.avgPerDay}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Rata-rata/Hari</div>
-                                </div>
-                                <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
-                                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#ec4899' }}>{stats.bestDay > 0 ? `H${stats.bestDay}` : '-'}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Hari Terbaik</div>
-                                </div>
-                            </>)}
-                        </div>
-
-                        {/* SINGLE DAY: Clock Chart */}
-                        {filterMode === 'day' && singleDayDetail && (
-                            <Section title="🕐 Distribusi Aktivitas 24 Jam">
-                                <DailyClockChart dayActivities={singleDayDetail} />
-                            </Section>
-                        )}
-
-                        {/* MULTI-DAY: Progress Trend */}
-                        {filterMode !== 'day' && (
-                            <section style={{ marginBottom: '20px' }}>
-                                <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>📈 Tren Progress</h2>
-                                <div style={{ background: 'var(--dark-800)', borderRadius: 'var(--radius-lg)', padding: '16px', height: '240px' }}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={dailyData}>
-                                            <defs>
-                                                <linearGradient id="udmColorProgress" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                                </linearGradient>
-                                            </defs>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                            <XAxis dataKey="day" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                                            <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} domain={[0, 100]} unit="%" />
-                                            <Tooltip {...tooltipStyle} formatter={(v) => [`${v}%`, 'Pencapaian']} />
-                                            <Area type="monotone" dataKey="percentage" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#udmColorProgress)" name="Pencapaian" />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </section>
-                        )}
-
-                        {/* MULTI-DAY: Pie Chart */}
-                        {filterMode !== 'day' && categorySummary.length > 0 && (
-                            <Section title="🥧 Distribusi Aktivitas">
-                                <div style={{ height: '220px' }}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie data={categorySummary} cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={3} dataKey="value">
-                                                {categorySummary.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                            </Pie>
-                                            <Tooltip {...tooltipStyle} formatter={(v, n) => [`${v}x`, n]} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', justifyContent: 'center', marginTop: '12px' }}>
-                                    {categorySummary.map((item, i) => (
-                                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: item.color }}>
-                                            <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: item.color, flexShrink: 0 }} />
-                                            {item.name} ({item.value})
-                                        </div>
-                                    ))}
-                                </div>
-                            </Section>
-                        )}
-
-                        {/* MULTI-DAY: Duration Summary */}
-                        {filterMode !== 'day' && activityHoursSummary.length > 0 && (
-                            <Section title="⏱️ Rekap Durasi per Aktivitas">
-                                <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginBottom: '14px', textAlign: 'center' }}>
-                                    Total durasi aktivitas yang tercatat selama {daysToInclude.length} hari
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {activityHoursSummary.map((item, i) => {
-                                        const maxH = activityHoursSummary[0]?.totalHours || 1;
-                                        const barW = Math.max((item.totalHours / maxH) * 100, 8);
-                                        const h = Math.floor(item.totalHours), m = Math.round((item.totalHours - h) * 60);
-                                        const dur = h > 0 && m > 0 ? `${h}j ${m}m` : h > 0 ? `${h}j` : `${m}m`;
-                                        const colors = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#ef4444', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#e879f9', '#22d3ee', '#facc15', '#fb923c'];
-                                        const c = colors[i % colors.length];
-                                        return (
-                                            <div key={i}>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: 'var(--dark-100)' }}>
-                                                        <span style={{ fontSize: '16px' }}>{item.icon}</span>{item.name}
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
-                                                        <span style={{ color: 'var(--dark-400)', fontSize: '11px' }}>{item.dayCount} hari</span>
-                                                        <span style={{ fontWeight: '700', color: c, fontFamily: 'monospace', fontSize: '13px' }}>{dur}</span>
-                                                    </div>
-                                                </div>
-                                                <div style={{ height: '6px', background: 'var(--dark-600)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
-                                                    <div style={{ width: `${barW}%`, height: '100%', background: `linear-gradient(90deg, ${c}, ${c}99)`, borderRadius: 'var(--radius-full)', transition: 'width 0.5s ease' }} />
-                                                </div>
+                            {/* Day Picker */}
+                            {(filterMode === 'day' || filterMode === '7days') && (
+                                <div style={{ marginBottom: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                                        <button onClick={() => setSelectedDay(d => Math.max(1, d - 1))} disabled={selectedDay <= 1}
+                                            style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay <= 1 ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay <= 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>◀</button>
+                                        <div style={{ flex: 1, textAlign: 'center' }}>
+                                            <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)' }}>
+                                                {filterMode === 'day' ? `Ramadhan Hari ke-${selectedDay}` : `Hari ${Math.max(1, selectedDay - 6)} – ${selectedDay}`}
                                             </div>
-                                        );
-                                    })}
+                                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px' }}>
+                                                {filterMode === 'day' ? getDateForRamadanDay(selectedDay) : `${daysToInclude.length} hari`}
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setSelectedDay(d => Math.min(30, d + 1))} disabled={selectedDay >= 30}
+                                            style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay >= 30 ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay >= 30 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</button>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
+                                        {Array.from({ length: 30 }, (_, i) => i + 1).map(day => (
+                                            <button key={day} onClick={() => setSelectedDay(day)} style={{
+                                                minWidth: '36px', height: '32px',
+                                                background: selectedDay === day ? 'var(--primary)' : (filterMode === '7days' && daysToInclude.includes(day)) ? 'rgba(59, 130, 246, 0.2)' : 'var(--dark-800)',
+                                                color: selectedDay === day ? 'white' : (filterMode === '7days' && daysToInclude.includes(day)) ? 'var(--primary)' : 'var(--dark-400)',
+                                                border: selectedDay === day ? 'none' : '1px solid var(--dark-700)', borderRadius: 'var(--radius-full)',
+                                                fontSize: '12px', fontWeight: selectedDay === day ? '700' : '500', cursor: 'pointer', flexShrink: 0,
+                                            }}>{day}</button>
+                                        ))}
+                                    </div>
                                 </div>
-                            </Section>
-                        )}
+                            )}
+
+                            {/* Stats Cards */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
+                                <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
+                                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#10b981' }}>{stats.totalCompleted}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Total Selesai</div>
+                                </div>
+                                <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
+                                    <div style={{ fontSize: '26px', fontWeight: '700', color: '#f59e0b' }}>{stats.completionRate}%</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Pencapaian</div>
+                                </div>
+                                {filterMode !== 'day' && (<>
+                                    <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
+                                        <div style={{ fontSize: '26px', fontWeight: '700', color: '#3b82f6' }}>{stats.avgPerDay}</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Rata-rata/Hari</div>
+                                    </div>
+                                    <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
+                                        <div style={{ fontSize: '26px', fontWeight: '700', color: '#ec4899' }}>{stats.bestDay > 0 ? `H${stats.bestDay}` : '-'}</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Hari Terbaik</div>
+                                    </div>
+                                </>)}
+                            </div>
+
+                            {/* SINGLE DAY: Clock Chart */}
+                            {filterMode === 'day' && singleDayDetail && (
+                                <Section title="🕐 Distribusi Aktivitas 24 Jam">
+                                    <DailyClockChart dayActivities={singleDayDetail} />
+                                </Section>
+                            )}
+
+                            {/* MULTI-DAY: Progress Trend */}
+                            {filterMode !== 'day' && (
+                                <section style={{ marginBottom: '20px' }}>
+                                    <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>📈 Tren Progress</h2>
+                                    <div style={{ background: 'var(--dark-800)', borderRadius: 'var(--radius-lg)', padding: '16px', height: '240px' }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={dailyData}>
+                                                <defs>
+                                                    <linearGradient id="udmColorProgress" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                                <XAxis dataKey="day" tick={{ fill: '#9ca3af', fontSize: 10 }} />
+                                                <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} domain={[0, 100]} unit="%" />
+                                                <Tooltip {...tooltipStyle} formatter={(v) => [`${v}%`, 'Pencapaian']} />
+                                                <Area type="monotone" dataKey="percentage" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#udmColorProgress)" name="Pencapaian" />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </section>
+                            )}
+
+                            {/* MULTI-DAY: Pie Chart */}
+                            {filterMode !== 'day' && categorySummary.length > 0 && (
+                                <Section title="🥧 Distribusi Aktivitas">
+                                    <div style={{ height: '220px' }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={categorySummary} cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={3} dataKey="value">
+                                                    {categorySummary.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                                </Pie>
+                                                <Tooltip {...tooltipStyle} formatter={(v, n) => [`${v}x`, n]} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', justifyContent: 'center', marginTop: '12px' }}>
+                                        {categorySummary.map((item, i) => (
+                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: item.color }}>
+                                                <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: item.color, flexShrink: 0 }} />
+                                                {item.name} ({item.value})
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Section>
+                            )}
+
+                            {/* MULTI-DAY: Duration Summary */}
+                            {filterMode !== 'day' && activityHoursSummary.length > 0 && (
+                                <Section title="⏱️ Rekap Durasi per Aktivitas">
+                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginBottom: '14px', textAlign: 'center' }}>
+                                        Total durasi aktivitas yang tercatat selama {daysToInclude.length} hari
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {activityHoursSummary.map((item, i) => {
+                                            const maxH = activityHoursSummary[0]?.totalHours || 1;
+                                            const barW = Math.max((item.totalHours / maxH) * 100, 8);
+                                            const h = Math.floor(item.totalHours), m = Math.round((item.totalHours - h) * 60);
+                                            const dur = h > 0 && m > 0 ? `${h}j ${m}m` : h > 0 ? `${h}j` : `${m}m`;
+                                            const colors = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#ef4444', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#e879f9', '#22d3ee', '#facc15', '#fb923c'];
+                                            const c = colors[i % colors.length];
+                                            return (
+                                                <div key={i}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '600', color: 'var(--dark-100)' }}>
+                                                            <span style={{ fontSize: '16px' }}>{item.icon}</span>{item.name}
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
+                                                            <span style={{ color: 'var(--dark-400)', fontSize: '11px' }}>{item.dayCount} hari</span>
+                                                            <span style={{ fontWeight: '700', color: c, fontFamily: 'monospace', fontSize: '13px' }}>{dur}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ height: '6px', background: 'var(--dark-600)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${barW}%`, height: '100%', background: `linear-gradient(90deg, ${c}, ${c}99)`, borderRadius: 'var(--radius-full)', transition: 'width 0.5s ease' }} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </Section>
+                            )}
 
 
-                        {/* Quran Progress */}
-                        <QuranSection quranGlobalProgress={quranGlobalProgress} quranReadings={quranReadings} daysToInclude={daysToInclude} filterMode={filterMode} selectedDay={selectedDay} />
-                    </>
-                )}
+                            {/* Quran Progress */}
+                            <QuranSection quranGlobalProgress={quranGlobalProgress} quranReadings={quranReadings} daysToInclude={daysToInclude} filterMode={filterMode} selectedDay={selectedDay} />
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );

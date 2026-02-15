@@ -3,10 +3,21 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 
+// Helper: add minutes to a time string "HH:MM", returns "HH:MM"
+function addMinutesToTime(timeStr, minutes) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  const newH = Math.floor(total / 60) % 24;
+  const newM = total % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
 export default function ActivityCard({ activity }) {
   const { toggleActivity, updateActivityTime, getActivityTimeData, selectedRamadanDay, isSelectedDayToday } = useApp();
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [sessions, setSessions] = useState([{ start: '', end: '' }]);
+  const isWajib = activity.category === 'wajib';
   const [isEditing, setIsEditing] = useState(false); // true when editing a completed activity
 
   // Get saved time data for this activity
@@ -48,7 +59,8 @@ export default function ActivityCard({ activity }) {
     } else {
       // New activity — set default
       const defaultStart = activity.time?.split?.(' - ')?.[0] || activity.time?.replace?.(/[^\d:]/g, '') || '';
-      setSessions([{ start: defaultStart, end: '' }]);
+      const defaultEnd = isWajib && defaultStart ? addMinutesToTime(defaultStart, 10) : '';
+      setSessions([{ start: defaultStart, end: defaultEnd }]);
     }
   }, [showTimeModal]);
 
@@ -129,9 +141,15 @@ export default function ActivityCard({ activity }) {
   };
 
   const updateSession = (index, field, value) => {
-    setSessions(prev => prev.map((s, i) =>
-      i === index ? { ...s, [field]: value } : s
-    ));
+    setSessions(prev => prev.map((s, i) => {
+      if (i !== index) return s;
+      const updated = { ...s, [field]: value };
+      // Auto-set end time for wajib prayers: start + 10 minutes
+      if (isWajib && field === 'start' && value) {
+        updated.end = addMinutesToTime(value, 10);
+      }
+      return updated;
+    }));
   };
 
   // Calculate total duration of all sessions
@@ -281,30 +299,40 @@ export default function ActivityCard({ activity }) {
                     />
                   </div>
 
-                  <span className="time-separator">→</span>
-
-                  <div className="time-input-group">
-                    <label className="time-label">Selesai</label>
-                    <input
-                      type="time"
-                      className="time-input"
-                      value={session.end}
-                      onChange={(e) => updateSession(index, 'end', e.target.value)}
-                    />
-                  </div>
+                  {!isWajib && (
+                    <>
+                      <span className="time-separator">→</span>
+                      <div className="time-input-group">
+                        <label className="time-label">Selesai</label>
+                        <input
+                          type="time"
+                          className="time-input"
+                          value={session.end}
+                          onChange={(e) => updateSession(index, 'end', e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
+                {isWajib && session.start && (
+                  <div style={{ fontSize: '11px', color: 'var(--emerald-400)', marginTop: '8px', textAlign: 'center' }}>
+                    ⏱️ Selesai otomatis: {addMinutesToTime(session.start, 10)} (10 menit)
+                  </div>
+                )}
               </div>
             ))}
           </div>
 
-          {/* Add session button */}
-          <button
-            className="add-session-btn"
-            onClick={addSession}
-          >
-            <span style={{ fontSize: '16px' }}>+</span>
-            Tambah Sesi
-          </button>
+          {/* Add session button — hidden for wajib prayers */}
+          {!isWajib && (
+            <button
+              className="add-session-btn"
+              onClick={addSession}
+            >
+              <span style={{ fontSize: '16px' }}>+</span>
+              Tambah Sesi
+            </button>
+          )}
 
           <div className="time-modal-actions">
             {isEditing ? (
