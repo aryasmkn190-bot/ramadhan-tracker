@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getRandomAyat } from '../lib/equran';
+import { getRandomAyat, getDailyAyat } from '../lib/equran';
 
 export default function AyatHarianCard() {
     const [ayatData, setAyatData] = useState(null);
@@ -11,12 +11,26 @@ export default function AyatHarianCard() {
     const audioRef = useRef(null);
 
     useEffect(() => {
-        loadAyat();
+        loadDailyAyat();
     }, []);
 
-    const loadAyat = async () => {
+    const loadDailyAyat = async () => {
+        setLoading(true);
+        const data = await getDailyAyat();
+        setAyatData(data);
+        setLoading(false);
+        setShowFull(false);
+        setIsPlaying(false);
+    };
+
+    const loadRandomAyat = async () => {
         setLoading(true);
         const data = await getRandomAyat();
+        try {
+            if (data?.ayat?.audio?.['05']) {
+                // Preload audio if possible, or just reset state
+            }
+        } catch (e) { }
         setAyatData(data);
         setLoading(false);
         setShowFull(false);
@@ -84,7 +98,7 @@ export default function AyatHarianCard() {
                         </button>
                     )}
                     <button
-                        onClick={loadAyat}
+                        onClick={loadRandomAyat}
                         style={{
                             background: 'rgba(245, 158, 11, 0.3)',
                             border: 'none',

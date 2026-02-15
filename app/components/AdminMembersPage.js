@@ -6,16 +6,17 @@ import { useApp } from '../contexts/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Pagination, { usePagination } from './Pagination';
 
-const USER_GROUPS = ['CHP', 'MR1', 'MR2', 'MR3', 'MR4', 'SMD1', 'SMD2'];
+const USER_GROUPS = ['PTO CENTRAL', 'PTO HOLDING', 'PTO 1', 'PTO 2', 'PTO 3', 'PTO 4', 'PTO 5', 'PTO 6'];
 
 const GROUP_COLORS = {
-    CHP: { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
-    MR1: { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#34d399' },
-    MR2: { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa' },
-    MR3: { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a78bfa' },
-    MR4: { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#f472b6' },
-    SMD1: { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24' },
-    SMD2: { bg: 'rgba(20, 184, 166, 0.15)', border: 'rgba(20, 184, 166, 0.3)', text: '#2dd4bf' },
+    'PTO CENTRAL': { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
+    'PTO HOLDING': { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a78bfa' },
+    'PTO 1': { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#34d399' },
+    'PTO 2': { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa' },
+    'PTO 3': { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#f472b6' },
+    'PTO 4': { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#fbbf24' },
+    'PTO 5': { bg: 'rgba(20, 184, 166, 0.15)', border: 'rgba(20, 184, 166, 0.3)', text: '#2dd4bf' },
+    'PTO 6': { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)', text: '#f87171' },
 };
 
 export default function AdminMembersPage() {
@@ -42,7 +43,7 @@ export default function AdminMembersPage() {
 
     // Import
     const [importText, setImportText] = useState('');
-    const [importGroup, setImportGroup] = useState('CHP');
+    const [importGroup, setImportGroup] = useState('PTO CENTRAL');
     const [importing, setImporting] = useState(false);
     const fileInputRef = useRef(null);
 
@@ -123,7 +124,11 @@ export default function AdminMembersPage() {
 
             console.log('Update result:', { data, error, count });
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase update error:', error.message, error.details, error.hint, error.code);
+                addToast(`❌ Gagal memperbarui: ${error.message || 'Unknown error'}`, 'error');
+                return;
+            }
 
             if (!data || data.length === 0) {
                 console.warn('No rows updated - likely RLS policy blocking the update');
@@ -141,8 +146,9 @@ export default function AdminMembersPage() {
             setShowEditModal(false);
             setEditingMember(null);
         } catch (error) {
-            console.error('Error updating member:', error);
-            addToast('❌ Gagal memperbarui data', 'error');
+            const msg = error?.message || error?.toString() || 'Unknown error';
+            console.error('Error updating member:', msg, error);
+            addToast(`❌ Gagal memperbarui data: ${msg}`, 'error');
         }
     };
 

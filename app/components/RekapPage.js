@@ -19,9 +19,8 @@ import {
     AreaChart,
     Area,
 } from 'recharts';
-import DailyClockChart from './DailyClockChart';
 
-const PIE_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444', '#06b6d4', '#a78bfa', '#fb923c', '#34d399'];
+const PIE_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444', '#06b6d4', '#a78bfa', '#fb923c', '#34d399', '#84cc16', '#22d3ee', '#e879f9', '#facc15', '#2dd4bf', '#818cf8', '#f472b6', '#c084fc'];
 const RANK_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 export default function RekapPage() {
@@ -91,43 +90,72 @@ export default function RekapPage() {
         });
     }, [daysToInclude, activities, getDateForRamadanDay, DEFAULT_PRAYERS, DEFAULT_SUNNAH, DEFAULT_ACTIVITIES, customActivities, allActivityDefs]);
 
-    // Category summary for pie chart — each custom activity is individual
+    // Per-activity data for stacked bar chart
+    const activityBarData = useMemo(() => {
+        const allCompletedIds = new Set();
+        const actIdToInfo = {};
+
+        daysToInclude.forEach(day => {
+            const dateStr = getDateForRamadanDay(day);
+            const dayActs = activities[dateStr] || {};
+            allActivityDefs.forEach(act => {
+                if (dayActs[act.id]?.completed) {
+                    allCompletedIds.add(act.id);
+                    if (!actIdToInfo[act.id]) {
+                        actIdToInfo[act.id] = { name: act.name, icon: act.icon };
+                    }
+                }
+            });
+        });
+
+        const sortedIds = [...allCompletedIds];
+
+        const data = daysToInclude.map(day => {
+            const dateStr = getDateForRamadanDay(day);
+            const dayActs = activities[dateStr] || {};
+            const entry = { day: `H${day}`, dayNum: day };
+            sortedIds.forEach(actId => {
+                entry[actId] = dayActs[actId]?.completed ? 1 : 0;
+            });
+            return entry;
+        });
+
+        const keys = sortedIds.map((id, i) => ({
+            key: id,
+            name: `${actIdToInfo[id].icon} ${actIdToInfo[id].name}`,
+            color: PIE_COLORS[i % PIE_COLORS.length],
+        }));
+
+        return { data, keys };
+    }, [daysToInclude, activities, getDateForRamadanDay, allActivityDefs]);
+
+    // Activity summary for pie chart — per individual activity name
     const categorySummary = useMemo(() => {
-        let sholat = 0, sunnah = 0, aktivitas = 0;
-        const customCounts = {};
+        const actCounts = {};
 
         daysToInclude.forEach(day => {
             const dateStr = getDateForRamadanDay(day);
             const dayActs = activities[dateStr] || {};
 
-            sholat += DEFAULT_PRAYERS.filter(p => dayActs[p.id]?.completed).length;
-            sunnah += DEFAULT_SUNNAH.filter(s => dayActs[s.id]?.completed).length;
-            aktivitas += DEFAULT_ACTIVITIES.filter(a => dayActs[a.id]?.completed).length;
-
-            // Count each custom activity individually
-            customActivities.forEach(ca => {
-                if (dayActs[ca.id]?.completed) {
-                    if (!customCounts[ca.id]) {
-                        customCounts[ca.id] = { name: `${ca.icon} ${ca.name}`, value: 0 };
+            allActivityDefs.forEach(act => {
+                if (dayActs[act.id]?.completed) {
+                    if (!actCounts[act.id]) {
+                        actCounts[act.id] = { name: `${act.icon} ${act.name}`, value: 0 };
                     }
-                    customCounts[ca.id].value++;
+                    actCounts[act.id].value++;
                 }
             });
         });
 
-        const result = [
-            { name: 'Sholat Wajib', value: sholat },
-            { name: 'Sholat Sunnah', value: sunnah },
-            { name: 'Aktivitas Ramadhan', value: aktivitas },
-            ...Object.values(customCounts),
-        ].filter(item => item.value > 0);
+        const result = Object.values(actCounts)
+            .filter(item => item.value > 0)
+            .sort((a, b) => b.value - a.value);
 
-        // Assign colors
         return result.map((item, i) => ({
             ...item,
             color: PIE_COLORS[i % PIE_COLORS.length],
         }));
-    }, [daysToInclude, activities, getDateForRamadanDay, DEFAULT_PRAYERS, DEFAULT_SUNNAH, DEFAULT_ACTIVITIES, customActivities]);
+    }, [daysToInclude, activities, getDateForRamadanDay, allActivityDefs]);
 
     // Activity ranking
     const activityRanking = useMemo(() => {
@@ -299,8 +327,11 @@ export default function RekapPage() {
             border: '1px solid #374151',
             borderRadius: '8px',
             fontSize: '12px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)',
         },
-        labelStyle: { color: '#fff' },
+        labelStyle: { color: '#f3f4f6', fontWeight: 600, marginBottom: '4px' },
+        itemStyle: { color: '#f3f4f6' },
+        cursor: { fill: 'rgba(255, 255, 255, 0.05)' }
     };
 
     return (
@@ -545,40 +576,12 @@ export default function RekapPage() {
                 </section>
             )}
 
-            {/* MULTI-DAY VIEW: Stacked Bar Chart */}
-            {filterMode !== 'day' && (
-                <section style={{ marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
-                        📊 Breakdown per Hari
-                    </h2>
-                    <div style={{
-                        background: 'var(--dark-800)',
-                        borderRadius: 'var(--radius-lg)',
-                        padding: '16px',
-                        height: '280px',
-                    }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={dailyData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis dataKey="day" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                                <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                                <Tooltip {...tooltipStyle} />
-                                <Legend wrapperStyle={{ fontSize: '11px' }} />
-                                <Bar dataKey="sholat" stackId="a" fill="#10b981" name="Sholat Wajib" radius={[0, 0, 0, 0]} />
-                                <Bar dataKey="sunnah" stackId="a" fill="#f59e0b" name="Sunnah" />
-                                <Bar dataKey="aktivitas" stackId="a" fill="#3b82f6" name="Aktivitas" />
-                                <Bar dataKey="custom" stackId="a" fill="#8b5cf6" name="Lainnya" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </section>
-            )}
 
             {/* MULTI-DAY VIEW: Category Pie Chart */}
             {filterMode !== 'day' && categorySummary.length > 0 && (
                 <section style={{ marginBottom: '20px' }}>
                     <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--dark-200)', marginBottom: '10px' }}>
-                        🥧 Distribusi Kategori
+                        🥧 Distribusi Aktivitas
                     </h2>
                     <div style={{
                         background: 'var(--dark-800)',
@@ -622,7 +625,7 @@ export default function RekapPage() {
                                     alignItems: 'center',
                                     gap: '5px',
                                     fontSize: '11px',
-                                    color: 'var(--dark-300)',
+                                    color: item.color,
                                 }}>
                                     <span style={{
                                         width: '10px',

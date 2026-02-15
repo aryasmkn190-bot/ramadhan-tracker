@@ -14,11 +14,15 @@ export default function SettingsPage() {
         addToast,
     } = useApp();
 
-    const { user, profile, signOut, isAdmin } = useAuth();
+    const { user, profile, signOut, isAdmin, updateProfile } = useAuth();
     const { themeMode, setThemeMode, resolvedTheme } = useTheme();
 
     const [showResetModal, setShowResetModal] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
+    const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+    const [editName, setEditName] = useState('');
+    const [editGroup, setEditGroup] = useState('');
+    const [savingProfile, setSavingProfile] = useState(false);
     const [isPWAInstalled, setIsPWAInstalled] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
 
@@ -71,6 +75,31 @@ export default function SettingsPage() {
         addToast('👋 Berhasil logout', 'info');
     };
 
+    const handleOpenEditProfile = () => {
+        setEditName(profile?.full_name || '');
+        setEditGroup(profile?.user_group || '');
+        setShowEditProfileModal(true);
+    };
+
+    const handleSaveProfile = async () => {
+        if (!editName.trim()) {
+            addToast('❌ Nama tidak boleh kosong', 'error');
+            return;
+        }
+        setSavingProfile(true);
+        const { error } = await updateProfile({
+            full_name: editName.trim(),
+            user_group: editGroup.trim(),
+        });
+        setSavingProfile(false);
+        if (error) {
+            addToast('❌ Gagal memperbarui profil', 'error');
+        } else {
+            addToast('✅ Profil berhasil diperbarui!', 'success');
+            setShowEditProfileModal(false);
+        }
+    };
+
     const handleExportData = () => {
         const data = {
             activities: localStorage.getItem('ramadhan_activities'),
@@ -89,6 +118,13 @@ export default function SettingsPage() {
     };
 
     const settingsItems = [
+        {
+            icon: '✏️',
+            label: 'Edit Profil',
+            desc: 'Ubah nama & grup pengguna',
+            action: 'chevron',
+            onClick: handleOpenEditProfile
+        },
         {
             icon: '🔔',
             label: 'Notifikasi',
@@ -135,19 +171,46 @@ export default function SettingsPage() {
         <main className="main-content">
             {/* Profile Card */}
             <div className="stats-card" style={{ textAlign: 'center', marginBottom: '24px' }}>
-                <div style={{
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '50%',
-                    background: isAdmin ? 'var(--gold-gradient)' : 'var(--primary-gradient)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '36px',
-                    margin: '0 auto 16px',
-                    boxShadow: isAdmin ? 'var(--shadow-gold)' : 'var(--shadow-glow)',
-                }}>
-                    {user ? (profile?.full_name?.charAt(0).toUpperCase() || '👤') : '🌙'}
+                <div style={{ position: 'relative', display: 'inline-block', margin: '0 auto 16px' }}>
+                    <div style={{
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '50%',
+                        background: isAdmin ? 'var(--gold-gradient)' : 'var(--primary-gradient)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '36px',
+                        boxShadow: isAdmin ? 'var(--shadow-gold)' : 'var(--shadow-glow)',
+                    }}>
+                        {user ? (profile?.full_name?.charAt(0).toUpperCase() || '👤') : '🌙'}
+                    </div>
+                    {user && (
+                        <button
+                            onClick={handleOpenEditProfile}
+                            style={{
+                                position: 'absolute',
+                                bottom: '-2px',
+                                right: '-2px',
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                background: 'var(--dark-700)',
+                                border: '2px solid var(--dark-800)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                                transition: 'transform 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.15)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            title="Edit Profil"
+                        >
+                            ✏️
+                        </button>
+                    )}
                 </div>
                 <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)', marginBottom: '4px' }}>
                     {user ? profile?.full_name : 'Ramadhan Tracker'}
@@ -175,10 +238,19 @@ export default function SettingsPage() {
                         'Versi 1.0.0 • PWA Enabled'
                     )}
                 </p>
+                {user && profile?.user_group && (
+                    <div style={{
+                        marginTop: '8px',
+                        fontSize: '12px',
+                        color: 'var(--emerald-400)',
+                    }}>
+                        👥 {profile.user_group}
+                    </div>
+                )}
 
                 {/* Connection Status */}
                 <div style={{
-                    marginTop: '16px',
+                    marginTop: '12px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
@@ -438,6 +510,140 @@ export default function SettingsPage() {
                                 style={{ flex: 1, background: 'var(--danger)' }}
                             >
                                 Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Edit Profile Modal */}
+            <div
+                className={`modal-overlay ${showEditProfileModal ? 'active' : ''}`}
+                onClick={() => setShowEditProfileModal(false)}
+            >
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="modal-handle"></div>
+                    <div style={{ padding: '10px 0 20px' }}>
+                        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                            <div style={{
+                                width: '64px',
+                                height: '64px',
+                                borderRadius: '50%',
+                                background: isAdmin ? 'var(--gold-gradient)' : 'var(--primary-gradient)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '28px',
+                                margin: '0 auto 12px',
+                                boxShadow: isAdmin ? 'var(--shadow-gold)' : 'var(--shadow-glow)',
+                            }}>
+                                {editName?.charAt(0)?.toUpperCase() || profile?.full_name?.charAt(0).toUpperCase() || '👤'}
+                            </div>
+                            <h2 style={{
+                                fontSize: '18px',
+                                fontWeight: '700',
+                                color: 'var(--dark-100)',
+                            }}>
+                                Edit Profil
+                            </h2>
+                            <p style={{
+                                fontSize: '12px',
+                                color: 'var(--dark-400)',
+                                marginTop: '4px',
+                            }}>
+                                {profile?.email}
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: 'var(--dark-300)',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                }}>
+                                    Nama Lengkap
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    placeholder="Masukkan nama lengkap"
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px 14px',
+                                        background: 'var(--dark-700)',
+                                        border: '1px solid var(--dark-600)',
+                                        borderRadius: 'var(--radius-md)',
+                                        color: 'var(--dark-100)',
+                                        fontSize: '14px',
+                                        fontFamily: 'inherit',
+                                        outline: 'none',
+                                        transition: 'border-color 0.2s ease',
+                                    }}
+                                    onFocus={(e) => e.target.style.borderColor = 'var(--emerald-500)'}
+                                    onBlur={(e) => e.target.style.borderColor = 'var(--dark-600)'}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: 'var(--dark-300)',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                }}>
+                                    Grup / Komunitas
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editGroup}
+                                    onChange={(e) => setEditGroup(e.target.value)}
+                                    placeholder="Nama grup (opsional)"
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px 14px',
+                                        background: 'var(--dark-700)',
+                                        border: '1px solid var(--dark-600)',
+                                        borderRadius: 'var(--radius-md)',
+                                        color: 'var(--dark-100)',
+                                        fontSize: '14px',
+                                        fontFamily: 'inherit',
+                                        outline: 'none',
+                                        transition: 'border-color 0.2s ease',
+                                    }}
+                                    onFocus={(e) => e.target.style.borderColor = 'var(--emerald-500)'}
+                                    onBlur={(e) => e.target.style.borderColor = 'var(--dark-600)'}
+                                />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setShowEditProfileModal(false)}
+                                style={{ flex: 1 }}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSaveProfile}
+                                disabled={savingProfile}
+                                style={{
+                                    flex: 1,
+                                    opacity: savingProfile ? 0.7 : 1,
+                                    cursor: savingProfile ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {savingProfile ? 'Menyimpan...' : 'Simpan'}
                             </button>
                         </div>
                     </div>

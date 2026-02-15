@@ -169,6 +169,64 @@ export async function getRandomAyat() {
     }
 }
 
+// Helper for deterministic daily seed
+function getDailySeed(dateStr) {
+    let hash = 0;
+    for (let i = 0; i < dateStr.length; i++) {
+        const char = dateStr.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return Math.abs(hash);
+}
+
+function getSeededRandom(seed) {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+}
+
+export async function getDailyAyat() {
+    try {
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+        const seed = getDailySeed(dateStr);
+
+        // Deterministic Surah (1-114)
+        // Use seed to pick surah
+        const rng1 = getSeededRandom(seed);
+        const randomSurat = Math.floor(rng1 * 114) + 1;
+
+        const surat = await getSuratDetail(randomSurat);
+
+        if (!surat || !surat.ayat || surat.ayat.length === 0) return null;
+
+        // Deterministic Ayat
+        // Use seed+1 to pick ayat from that surah
+        const rng2 = getSeededRandom(seed + 12345); // Different seed offset
+        const randomAyatIndex = Math.floor(rng2 * surat.ayat.length);
+        const ayat = surat.ayat[randomAyatIndex];
+
+        return {
+            surat: {
+                nomor: surat.nomor,
+                nama: surat.nama,
+                namaLatin: surat.namaLatin,
+                arti: surat.arti,
+            },
+            ayat: {
+                nomor: ayat.nomorAyat,
+                arab: ayat.teksArab,
+                latin: ayat.teksLatin,
+                arti: ayat.teksIndonesia,
+                audio: ayat.audio,
+            }
+        };
+    } catch (error) {
+        console.error('Error fetching daily ayat:', error);
+        return null;
+    }
+}
+
 // ==================== UTILITIES ====================
 
 export function parseTimeToMinutes(timeStr) {

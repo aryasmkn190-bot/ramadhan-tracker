@@ -269,11 +269,14 @@ export default function DailyClockChart({ dayActivities }) {
         };
     }, [dayActivities]);
 
-    // Dynamic ring sizes based on max layers
-    const RING_W = maxLayers <= 2 ? 22 : maxLayers <= 3 ? 18 : maxLayers <= 4 ? 14 : 11;
-    const RING_G = 3;
+    // Auto-scale: dynamically calculate ring sizes based on number of layers
     const OUTER_RING = 200;
-    const INNER_LIMIT = 70;
+    const INNER_LIMIT = 58; // just outside center circle (r=52)
+    const AVAILABLE_SPACE = OUTER_RING - INNER_LIMIT; // 142px total radial space
+    const effectiveLayers = Math.max(1, maxLayers);
+    const RING_G = effectiveLayers <= 4 ? 3 : 2; // tighter gap when many layers
+    const totalGaps = Math.max(0, effectiveLayers - 1) * RING_G;
+    const RING_W = Math.min(26, Math.max(6, Math.floor((AVAILABLE_SPACE - totalGaps) / effectiveLayers)));
 
     if (totalCompleted === 0) {
         return (
@@ -319,8 +322,8 @@ export default function DailyClockChart({ dayActivities }) {
                         </radialGradient>
                     </defs>
 
-                    {/* Background ring */}
-                    <circle cx={CX} cy={CY} r={175} fill="none" stroke="var(--dark-600)" strokeWidth="80" opacity="0.3" />
+                    {/* Background ring — dynamic, covers all layers */}
+                    <circle cx={CX} cy={CY} r={(OUTER_RING + INNER_LIMIT) / 2} fill="none" stroke="var(--dark-600)" strokeWidth={OUTER_RING - INNER_LIMIT} opacity="0.3" />
 
                     {/* Day half (06-18, upper) */}
                     <path d={donutArc(CX, CY, OUTER_RING + 8, INNER_LIMIT - 5, hourToAngle(6), hourToAngle(18))} fill="url(#dayBg2)" />
@@ -412,7 +415,7 @@ export default function DailyClockChart({ dayActivities }) {
                         const a1 = hourToAngle(gap.startH) + arcGap;
                         const a2 = hourToAngle(gap.endH) - arcGap;
                         const oR = OUTER_RING;
-                        const iR = oR - RING_W;
+                        const iR = INNER_LIMIT;
                         return (
                             <path
                                 key={`idle-${idx}`}
