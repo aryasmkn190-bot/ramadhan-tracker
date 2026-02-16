@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 
 // Qari list for audio
@@ -24,6 +24,7 @@ export default function QuranPage() {
         addQuranReading,
         selectedDateString,
         addToast,
+        quranReadings,
     } = useApp();
 
     // Main state
@@ -43,6 +44,11 @@ export default function QuranPage() {
     const [showLatin, setShowLatin] = useState(false);
     const [lastReadSurah, setLastReadSurah] = useState(null);
     const [lastReadAyat, setLastReadAyat] = useState(null);
+
+    // Per-ayat selection
+    const [selectedAyats, setSelectedAyats] = useState(new Set());
+    const [selectMode, setSelectMode] = useState(false); // range-select mode
+    const [rangeStart, setRangeStart] = useState(null);
 
     // Audio ref
     const audioRef = useRef(null);
@@ -219,6 +225,104 @@ export default function QuranPage() {
         addQuranReading(currentSurah.nomor, 1, currentSurah.jumlahAyat, selectedDateString);
     };
 
+    // Build a set of already-read ayat for current surah
+    const readAyatSet = useMemo(() => {
+        if (!currentSurah) return new Set();
+        const set = new Set();
+        quranReadings.forEach(r => {
+            if (r.surahNumber === currentSurah.nomor) {
+                for (let a = r.startAyat; a <= r.endAyat; a++) {
+                    set.add(a);
+                }
+            }
+        });
+        return set;
+    }, [currentSurah, quranReadings]);
+
+    // Toggle single ayat selection
+    const toggleAyatSelection = (ayatNum) => {
+        if (selectMode && rangeStart !== null) {
+            // Range select: select from rangeStart to this ayat
+            const start = Math.min(rangeStart, ayatNum);
+            const end = Math.max(rangeStart, ayatNum);
+            const newSet = new Set(selectedAyats);
+            for (let i = start; i <= end; i++) {
+                newSet.add(i);
+            }
+            setSelectedAyats(newSet);
+            setRangeStart(null);
+            setSelectMode(false);
+            return;
+        }
+
+        if (selectMode) {
+            setRangeStart(ayatNum);
+            return;
+        }
+
+        // Normal toggle
+        const newSet = new Set(selectedAyats);
+        if (newSet.has(ayatNum)) {
+            newSet.delete(ayatNum);
+        } else {
+            newSet.add(ayatNum);
+        }
+        setSelectedAyats(newSet);
+    };
+
+    // Select all ayats
+    const selectAllAyats = () => {
+        if (!currentSurah) return;
+        const all = new Set();
+        for (let i = 1; i <= currentSurah.jumlahAyat; i++) all.add(i);
+        setSelectedAyats(all);
+    };
+
+    // Deselect all ayats
+    const deselectAllAyats = () => {
+        setSelectedAyats(new Set());
+        setRangeStart(null);
+        setSelectMode(false);
+    };
+
+    // Mark selected ayats as read
+    const markSelectedRead = async () => {
+        if (!currentSurah || selectedAyats.size === 0) return;
+
+        // Convert selectedAyats Set to sorted array
+        const sorted = [...selectedAyats].sort((a, b) => a - b);
+
+        // Group consecutive ayats into ranges
+        const ranges = [];
+        let start = sorted[0];
+        let end = sorted[0];
+
+        for (let i = 1; i < sorted.length; i++) {
+            if (sorted[i] === end + 1) {
+                end = sorted[i];
+            } else {
+                ranges.push({ start, end });
+                start = sorted[i];
+                end = sorted[i];
+            }
+        }
+        ranges.push({ start, end });
+
+        // Record each range sequentially
+        for (const range of ranges) {
+            await addQuranReading(currentSurah.nomor, range.start, range.end, selectedDateString);
+        }
+
+        setSelectedAyats(new Set());
+    };
+
+    // Reset selection when changing surah
+    useEffect(() => {
+        setSelectedAyats(new Set());
+        setRangeStart(null);
+        setSelectMode(false);
+    }, [currentSurah?.nomor]);
+
     // Filter surahs
     const filteredSurahs = surahList.filter(s =>
         s.namaLatin.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -320,9 +424,17 @@ export default function QuranPage() {
                             {currentSurah?.namaLatin || 'Memuat...'}
                         </h2>
                         {currentSurah && (
-                            <p style={{ fontSize: '11px', color: 'var(--dark-400)', margin: 0 }}>
-                                {currentSurah.arti} • {currentSurah.jumlahAyat} ayat • {currentSurah.tempatTurun}
-                            </p>
+                            <div>
+                                <p style={{ fontSize: '11px', color: 'var(--dark-400)', margin: 0 }}>
+                                    {currentSurah.arti} • {currentSurah.jumlahAyat} ayat • {currentSurah.tempatTurun}
+                                </p>
+                                {readAyatSet.size > 0 && (
+                                    <p style={{ fontSize: '10px', color: '#10b981', margin: '2px 0 0 0', fontWeight: '600' }}>
+                                        ✓ {readAyatSet.size}/{currentSurah.jumlahAyat} ayat sudah dibaca
+                                        {readAyatSet.size === currentSurah.jumlahAyat && ' 🎉'}
+                                    </p>
+                                )}
+                            </div>
                         )}
                     </div>
                     <span style={{
@@ -422,23 +534,127 @@ export default function QuranPage() {
                             >
                                 Aa Latin
                             </button>
-                            <div style={{ flex: 1 }} />
+                        </div>
+
+                        {/* Selection controls */}
+                        <div style={{
+                            display: 'flex',
+                            gap: '6px',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            paddingTop: '4px',
+                            borderTop: '1px solid var(--dark-700)',
+                        }}>
                             <button
-                                onClick={markSurahRead}
+                                onClick={() => {
+                                    if (selectMode) {
+                                        setSelectMode(false);
+                                        setRangeStart(null);
+                                    } else {
+                                        setSelectMode(true);
+                                        setRangeStart(null);
+                                    }
+                                }}
                                 style={{
-                                    padding: '5px 12px',
+                                    padding: '5px 10px',
                                     borderRadius: 'var(--radius-full)',
                                     border: 'none',
-                                    background: 'var(--primary-gradient)',
-                                    color: 'white',
+                                    background: selectMode ? 'rgba(139, 92, 246, 0.2)' : 'var(--dark-700)',
+                                    color: selectMode ? '#a78bfa' : 'var(--dark-400)',
                                     fontSize: '11px',
                                     fontWeight: '600',
                                     cursor: 'pointer',
                                 }}
                             >
-                                ✅ Tandai Selesai
+                                {selectMode ? (rangeStart ? `📍 Pilih akhir...` : '📍 Pilih awal...') : '↔️ Range'}
                             </button>
+                            <button
+                                onClick={selectAllAyats}
+                                style={{
+                                    padding: '5px 10px',
+                                    borderRadius: 'var(--radius-full)',
+                                    border: 'none',
+                                    background: 'var(--dark-700)',
+                                    color: 'var(--dark-400)',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                ☑️ Semua
+                            </button>
+                            {selectedAyats.size > 0 && (
+                                <button
+                                    onClick={deselectAllAyats}
+                                    style={{
+                                        padding: '5px 10px',
+                                        borderRadius: 'var(--radius-full)',
+                                        border: 'none',
+                                        background: 'var(--dark-700)',
+                                        color: 'var(--dark-400)',
+                                        fontSize: '11px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    ✖ Batal
+                                </button>
+                            )}
+
+                            <div style={{ flex: 1 }} />
+
+                            {selectedAyats.size > 0 ? (
+                                <button
+                                    onClick={markSelectedRead}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: 'var(--radius-full)',
+                                        border: 'none',
+                                        background: 'var(--primary-gradient)',
+                                        color: 'white',
+                                        fontSize: '11px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    ✅ Tandai {selectedAyats.size} Ayat
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={markSurahRead}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: 'var(--radius-full)',
+                                        border: 'none',
+                                        background: 'var(--primary-gradient)',
+                                        color: 'white',
+                                        fontSize: '11px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    ✅ Tandai Semua
+                                </button>
+                            )}
                         </div>
+
+                        {/* Selection info */}
+                        {selectedAyats.size > 0 && (
+                            <div style={{
+                                fontSize: '11px',
+                                color: 'var(--emerald-400)',
+                                background: 'rgba(16, 185, 129, 0.08)',
+                                padding: '6px 10px',
+                                borderRadius: 'var(--radius-md)',
+                                textAlign: 'center',
+                            }}>
+                                {(() => {
+                                    const sorted = [...selectedAyats].sort((a, b) => a - b);
+                                    if (sorted.length <= 5) return `Ayat terpilih: ${sorted.join(', ')}`;
+                                    return `${sorted.length} ayat terpilih (${sorted[0]}–${sorted[sorted.length - 1]})`;
+                                })()}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -479,106 +695,168 @@ export default function QuranPage() {
 
                 {/* Ayat List */}
                 <div ref={readerRef} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {ayatList.map((ayat) => (
-                        <div
-                            key={ayat.nomorAyat}
-                            ref={el => ayatRefs.current[ayat.nomorAyat] = el}
-                            style={{
-                                background: playingAyat === ayat.nomorAyat
-                                    ? 'rgba(16, 185, 129, 0.08)'
-                                    : 'var(--dark-800)',
-                                borderRadius: 'var(--radius-lg)',
-                                padding: '16px',
-                                border: playingAyat === ayat.nomorAyat
-                                    ? '1px solid rgba(16, 185, 129, 0.2)'
-                                    : '1px solid transparent',
-                                transition: 'all 0.3s ease',
-                            }}
-                        >
-                            {/* Ayat number + play button */}
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                marginBottom: '12px',
-                            }}>
+                    {ayatList.map((ayat) => {
+                        const isSelected = selectedAyats.has(ayat.nomorAyat);
+                        const isRangeStart = selectMode && rangeStart === ayat.nomorAyat;
+                        const isAlreadyRead = readAyatSet.has(ayat.nomorAyat);
+
+                        return (
+                            <div
+                                key={ayat.nomorAyat}
+                                ref={el => ayatRefs.current[ayat.nomorAyat] = el}
+                                style={{
+                                    background: isRangeStart
+                                        ? 'rgba(139, 92, 246, 0.1)'
+                                        : isSelected
+                                            ? 'rgba(16, 185, 129, 0.06)'
+                                            : playingAyat === ayat.nomorAyat
+                                                ? 'rgba(16, 185, 129, 0.08)'
+                                                : 'var(--dark-800)',
+                                    borderRadius: 'var(--radius-lg)',
+                                    padding: '16px',
+                                    border: isRangeStart
+                                        ? '1px solid rgba(139, 92, 246, 0.3)'
+                                        : isSelected
+                                            ? '1px solid rgba(16, 185, 129, 0.2)'
+                                            : playingAyat === ayat.nomorAyat
+                                                ? '1px solid rgba(16, 185, 129, 0.2)'
+                                                : '1px solid transparent',
+                                    transition: 'all 0.3s ease',
+                                }}
+                            >
+                                {/* Ayat number + checkbox + play button */}
                                 <div style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: 'var(--radius-full)',
-                                    background: 'rgba(251, 191, 36, 0.12)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '12px',
-                                    fontWeight: '700',
-                                    color: 'var(--gold-400)',
+                                    justifyContent: 'space-between',
+                                    marginBottom: '12px',
                                 }}>
-                                    {ayat.nomorAyat}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {/* Checkbox */}
+                                        <button
+                                            onClick={() => toggleAyatSelection(ayat.nomorAyat)}
+                                            style={{
+                                                width: '24px',
+                                                height: '24px',
+                                                borderRadius: '6px',
+                                                border: isSelected
+                                                    ? '2px solid #10b981'
+                                                    : isRangeStart
+                                                        ? '2px solid #8b5cf6'
+                                                        : '2px solid var(--dark-500)',
+                                                background: isSelected
+                                                    ? 'rgba(16, 185, 129, 0.2)'
+                                                    : isRangeStart
+                                                        ? 'rgba(139, 92, 246, 0.2)'
+                                                        : 'transparent',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '12px',
+                                                flexShrink: 0,
+                                                transition: 'all 0.2s ease',
+                                            }}
+                                        >
+                                            {isSelected ? '✓' : isRangeStart ? '📍' : ''}
+                                        </button>
+
+                                        {/* Ayat number */}
+                                        <div style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: 'var(--radius-full)',
+                                            background: isAlreadyRead
+                                                ? 'rgba(16, 185, 129, 0.15)'
+                                                : 'rgba(251, 191, 36, 0.12)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '12px',
+                                            fontWeight: '700',
+                                            color: isAlreadyRead ? '#10b981' : 'var(--gold-400)',
+                                        }}>
+                                            {ayat.nomorAyat}
+                                        </div>
+
+                                        {isAlreadyRead && (
+                                            <span style={{
+                                                fontSize: '9px',
+                                                color: '#10b981',
+                                                fontWeight: '600',
+                                                background: 'rgba(16, 185, 129, 0.1)',
+                                                padding: '2px 6px',
+                                                borderRadius: 'var(--radius-full)',
+                                            }}>
+                                                ✓ Dibaca
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        onClick={() => playAyatAudio(ayat)}
+                                        style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: 'var(--radius-full)',
+                                            background: playingAyat === ayat.nomorAyat
+                                                ? 'rgba(239, 68, 68, 0.15)'
+                                                : 'rgba(16, 185, 129, 0.12)',
+                                            border: 'none',
+                                            color: playingAyat === ayat.nomorAyat
+                                                ? '#f87171' : 'var(--success)',
+                                            fontSize: '14px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}
+                                    >
+                                        {playingAyat === ayat.nomorAyat ? '⏸' : '▶'}
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => playAyatAudio(ayat)}
-                                    style={{
-                                        width: '32px',
-                                        height: '32px',
-                                        borderRadius: 'var(--radius-full)',
-                                        background: playingAyat === ayat.nomorAyat
-                                            ? 'rgba(239, 68, 68, 0.15)'
-                                            : 'rgba(16, 185, 129, 0.12)',
-                                        border: 'none',
-                                        color: playingAyat === ayat.nomorAyat
-                                            ? '#f87171' : 'var(--success)',
-                                        fontSize: '14px',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                    }}
-                                >
-                                    {playingAyat === ayat.nomorAyat ? '⏸' : '▶'}
-                                </button>
+
+                                {/* Arabic text */}
+                                <p style={{
+                                    fontSize: '26px',
+                                    fontFamily: "'Scheherazade New', 'Amiri', 'Traditional Arabic', serif",
+                                    color: 'var(--dark-50)',
+                                    direction: 'rtl',
+                                    textAlign: 'right',
+                                    lineHeight: 2,
+                                    margin: '0 0 10px 0',
+                                    wordSpacing: '4px',
+                                }}>
+                                    {ayat.teksArab}
+                                </p>
+
+                                {/* Latin */}
+                                {showLatin && ayat.teksLatin && (
+                                    <p style={{
+                                        fontSize: '13px',
+                                        color: '#60a5fa',
+                                        fontStyle: 'italic',
+                                        lineHeight: 1.6,
+                                        margin: '0 0 6px 0',
+                                    }}>
+                                        {ayat.teksLatin}
+                                    </p>
+                                )}
+
+                                {/* Translation */}
+                                {showTranslation && (
+                                    <p style={{
+                                        fontSize: '13px',
+                                        color: 'var(--dark-300)',
+                                        lineHeight: 1.6,
+                                        margin: 0,
+                                    }}>
+                                        {ayat.teksIndonesia}
+                                    </p>
+                                )}
                             </div>
-
-                            {/* Arabic text */}
-                            <p style={{
-                                fontSize: '26px',
-                                fontFamily: "'Scheherazade New', 'Amiri', 'Traditional Arabic', serif",
-                                color: 'var(--dark-50)',
-                                direction: 'rtl',
-                                textAlign: 'right',
-                                lineHeight: 2,
-                                margin: '0 0 10px 0',
-                                wordSpacing: '4px',
-                            }}>
-                                {ayat.teksArab}
-                            </p>
-
-                            {/* Latin */}
-                            {showLatin && ayat.teksLatin && (
-                                <p style={{
-                                    fontSize: '13px',
-                                    color: '#60a5fa',
-                                    fontStyle: 'italic',
-                                    lineHeight: 1.6,
-                                    margin: '0 0 6px 0',
-                                }}>
-                                    {ayat.teksLatin}
-                                </p>
-                            )}
-
-                            {/* Translation */}
-                            {showTranslation && (
-                                <p style={{
-                                    fontSize: '13px',
-                                    color: 'var(--dark-300)',
-                                    lineHeight: 1.6,
-                                    margin: 0,
-                                }}>
-                                    {ayat.teksIndonesia}
-                                </p>
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* Surah Navigation */}
@@ -775,75 +1053,117 @@ export default function QuranPage() {
                             Tidak ditemukan surat "{searchQuery}"
                         </div>
                     ) : (
-                        filteredSurahs.map(surah => (
-                            <button
-                                key={surah.nomor}
-                                onClick={() => openSurah(surah.nomor)}
-                                style={{
-                                    padding: '12px 14px',
-                                    borderRadius: 'var(--radius-lg)',
-                                    background: 'var(--dark-800)',
-                                    border: lastReadSurah === surah.nomor
-                                        ? '1px solid rgba(16, 185, 129, 0.3)'
-                                        : '1px solid transparent',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '12px',
-                                    cursor: 'pointer',
-                                    textAlign: 'left',
-                                    width: '100%',
-                                    transition: 'var(--transition-fast)',
-                                }}
-                            >
-                                {/* Number badge */}
-                                <div style={{
-                                    width: '36px',
-                                    height: '36px',
-                                    borderRadius: 'var(--radius-md)',
-                                    background: 'rgba(251, 191, 36, 0.1)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '13px',
-                                    fontWeight: '700',
-                                    color: 'var(--gold-400)',
-                                    flexShrink: 0,
-                                }}>
-                                    {surah.nomor}
-                                </div>
+                        filteredSurahs.map(surah => {
+                            const sp = quranGlobalProgress?.surahProgress?.find(s => s.number === surah.nomor);
+                            const pct = sp?.percentage || 0;
+                            const isComplete = pct === 100;
+                            const hasProgress = pct > 0;
 
-                                {/* Info */}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{
-                                        fontWeight: '600',
-                                        color: 'var(--dark-100)',
-                                        fontSize: '14px',
+                            return (
+                                <button
+                                    key={surah.nomor}
+                                    onClick={() => openSurah(surah.nomor)}
+                                    style={{
+                                        padding: '12px 14px',
+                                        borderRadius: 'var(--radius-lg)',
+                                        background: 'var(--dark-800)',
+                                        border: isComplete
+                                            ? '1px solid rgba(16, 185, 129, 0.2)'
+                                            : lastReadSurah === surah.nomor
+                                                ? '1px solid rgba(16, 185, 129, 0.3)'
+                                                : '1px solid transparent',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '6px',
+                                        gap: '12px',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        width: '100%',
+                                        transition: 'var(--transition-fast)',
+                                    }}
+                                >
+                                    {/* Number badge */}
+                                    <div style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        borderRadius: 'var(--radius-md)',
+                                        background: isComplete
+                                            ? 'rgba(16, 185, 129, 0.15)'
+                                            : 'rgba(251, 191, 36, 0.1)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: isComplete ? '16px' : '13px',
+                                        fontWeight: '700',
+                                        color: isComplete ? '#10b981' : 'var(--gold-400)',
+                                        flexShrink: 0,
                                     }}>
-                                        {surah.namaLatin}
-                                        {lastReadSurah === surah.nomor && (
-                                            <span style={{ fontSize: '10px' }}>📌</span>
+                                        {isComplete ? '✓' : surah.nomor}
+                                    </div>
+
+                                    {/* Info */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                            fontWeight: '600',
+                                            color: isComplete ? '#10b981' : 'var(--dark-100)',
+                                            fontSize: '14px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                        }}>
+                                            {surah.namaLatin}
+                                            {lastReadSurah === surah.nomor && (
+                                                <span style={{ fontSize: '10px' }}>📌</span>
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
+                                            {surah.arti} • {surah.jumlahAyat} ayat • {surah.tempatTurun}
+                                        </div>
+                                        {hasProgress && !isComplete && (
+                                            <div style={{
+                                                height: '3px',
+                                                background: 'var(--dark-600)',
+                                                borderRadius: '2px',
+                                                overflow: 'hidden',
+                                                marginTop: '5px',
+                                            }}>
+                                                <div style={{
+                                                    width: `${pct}%`,
+                                                    height: '100%',
+                                                    background: 'linear-gradient(90deg, #10b981, #3b82f6)',
+                                                    borderRadius: '2px',
+                                                    transition: 'width 0.5s ease',
+                                                }} />
+                                            </div>
                                         )}
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
-                                        {surah.arti} • {surah.jumlahAyat} ayat • {surah.tempatTurun}
-                                    </div>
-                                </div>
 
-                                {/* Arabic name */}
-                                <span style={{
-                                    fontSize: '20px',
-                                    fontFamily: "'Scheherazade New', 'Amiri', serif",
-                                    color: 'var(--dark-300)',
-                                    direction: 'rtl',
-                                    flexShrink: 0,
-                                }}>
-                                    {surah.nama}
-                                </span>
-                            </button>
-                        ))
+                                    {/* Progress or Arabic name */}
+                                    {hasProgress && !isComplete ? (
+                                        <span style={{
+                                            fontSize: '11px',
+                                            fontWeight: '600',
+                                            color: '#3b82f6',
+                                            background: 'rgba(59, 130, 246, 0.1)',
+                                            padding: '3px 8px',
+                                            borderRadius: 'var(--radius-full)',
+                                            flexShrink: 0,
+                                        }}>
+                                            {pct}%
+                                        </span>
+                                    ) : (
+                                        <span style={{
+                                            fontSize: '20px',
+                                            fontFamily: "'Scheherazade New', 'Amiri', serif",
+                                            color: isComplete ? '#10b981' : 'var(--dark-300)',
+                                            direction: 'rtl',
+                                            flexShrink: 0,
+                                        }}>
+                                            {surah.nama}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })
                     )}
                 </div>
             )}

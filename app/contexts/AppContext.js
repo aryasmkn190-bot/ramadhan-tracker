@@ -854,6 +854,10 @@ export function AppProvider({ children }) {
 
             if (error) throw error;
 
+            if (!data) {
+                throw new Error('No data returned from insert');
+            }
+
             // Replace temp ID with real ID
             setQuranReadings(prev =>
                 prev.map(r => r.id === tempId
@@ -865,10 +869,10 @@ export function AppProvider({ children }) {
             const ayatCount = clampedEnd - clampedStart + 1;
             addToast(`📖 ${surah.name} ayat ${clampedStart}-${clampedEnd} (${ayatCount} ayat)`, 'success');
         } catch (error) {
-            console.error('Error saving Quran reading:', error);
+            console.error('Error saving Quran reading:', error?.message || error?.code || JSON.stringify(error));
             // Revert optimistic update
             setQuranReadings(prev => prev.filter(r => r.id !== tempId));
-            if (error.code === '23505') {
+            if (error?.code === '23505') {
                 addToast('Bacaan ini sudah tercatat sebelumnya', 'info');
             } else {
                 addToast('Gagal menyimpan. Coba lagi.', 'error');
@@ -987,10 +991,25 @@ export function AppProvider({ children }) {
             }
         }
 
+        // Check if there's tadarus progress for the selected day
+        const hasTadarus = quranReadings.some(r => r.readDate === selectedDateString);
+
+        // Calculate percentage: activities completed + tadarus factor
+        let percentage;
+        if (totalActivities > 0 && completedDay >= totalActivities && hasTadarus) {
+            percentage = 100;
+        } else if (totalActivities > 0) {
+            const adjustedCompleted = completedDay + (hasTadarus ? 1 : 0);
+            const adjustedTotal = totalActivities + 1; // +1 for tadarus slot
+            percentage = Math.round((adjustedCompleted / adjustedTotal) * 100);
+        } else {
+            percentage = hasTadarus ? 100 : 0;
+        }
+
         return {
             completedToday: completedDay,
             totalActivities,
-            percentage: Math.round((completedDay / totalActivities) * 100),
+            percentage,
             totalCompleted,
             currentDay: currentRamadanDay,
             selectedDay: selectedRamadanDay,
@@ -998,7 +1017,7 @@ export function AppProvider({ children }) {
             quranPercentage: quranGlobalProgress.percentage,
             streak,
         };
-    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, quranGlobalProgress]);
+    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, selectedDateString, quranReadings, quranGlobalProgress]);
 
     // Toast management
     const addToast = useCallback((message, type = 'success') => {

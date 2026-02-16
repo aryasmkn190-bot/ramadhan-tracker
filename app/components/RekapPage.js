@@ -72,10 +72,31 @@ export default function RekapPage() {
             const prayersCompleted = DEFAULT_PRAYERS.filter(p => dayActs[p.id]?.completed).length;
             const sunnahCompleted = DEFAULT_SUNNAH.filter(s => dayActs[s.id]?.completed).length;
             const activitiesCompleted = DEFAULT_ACTIVITIES.filter(a => dayActs[a.id]?.completed).length;
-            const customCompleted = customActivities.filter(c => dayActs[c.id]?.completed).length;
+
+            // Only count custom activities that were actually added for this day
+            const addedCustomForDay = customActivities.filter(ca => dayActs[ca.id]?.added);
+            const customCompleted = addedCustomForDay.filter(c => dayActs[c.id]?.completed).length;
 
             const total = prayersCompleted + sunnahCompleted + activitiesCompleted + customCompleted;
-            const maxTotal = allActivityDefs.length;
+
+            // maxTotal = defaults + added customs for this specific day
+            const maxTotal = DEFAULT_PRAYERS.length + DEFAULT_SUNNAH.length + DEFAULT_ACTIVITIES.length + addedCustomForDay.length;
+
+            // Check if there's tadarus/quran reading progress for this day
+            const hasTadarus = quranReadings.some(r => r.readDate === dateStr);
+
+            // Calculate percentage: if all activities done + has tadarus → 100%
+            let percentage;
+            if (maxTotal > 0 && total >= maxTotal && hasTadarus) {
+                percentage = 100;
+            } else if (maxTotal > 0) {
+                // Include tadarus as part of the ratio (adds 1 to both numerator and denominator)
+                const adjustedTotal = total + (hasTadarus ? 1 : 0);
+                const adjustedMax = maxTotal + 1; // +1 for tadarus slot
+                percentage = Math.round((adjustedTotal / adjustedMax) * 100);
+            } else {
+                percentage = hasTadarus ? 100 : 0;
+            }
 
             return {
                 day: `H${day}`,
@@ -85,10 +106,12 @@ export default function RekapPage() {
                 aktivitas: activitiesCompleted,
                 custom: customCompleted,
                 total,
-                percentage: maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0,
+                maxTotal,
+                hasTadarus,
+                percentage,
             };
         });
-    }, [daysToInclude, activities, getDateForRamadanDay, DEFAULT_PRAYERS, DEFAULT_SUNNAH, DEFAULT_ACTIVITIES, customActivities, allActivityDefs]);
+    }, [daysToInclude, activities, getDateForRamadanDay, DEFAULT_PRAYERS, DEFAULT_SUNNAH, DEFAULT_ACTIVITIES, customActivities, quranReadings]);
 
     // Per-activity data for stacked bar chart
     const activityBarData = useMemo(() => {
@@ -182,20 +205,21 @@ export default function RekapPage() {
 
     // Statistics
     const stats = useMemo(() => {
-        const totalPossible = daysToInclude.length * allActivityDefs.length;
-        const totalCompleted = dailyData.reduce((sum, d) => sum + d.total, 0);
-        const avgPerDay = daysToInclude.length > 0 ? Math.round(totalCompleted / daysToInclude.length * 10) / 10 : 0;
+        // Sum up per-day maxTotal (adjusted with tadarus) instead of using a flat multiplier
+        const totalCompleted = dailyData.reduce((sum, d) => sum + d.total + (d.hasTadarus ? 1 : 0), 0);
+        const totalPossible = dailyData.reduce((sum, d) => sum + d.maxTotal + 1, 0); // +1 per day for tadarus
+        const avgPerDay = daysToInclude.length > 0 ? Math.round(dailyData.reduce((sum, d) => sum + d.total, 0) / daysToInclude.length * 10) / 10 : 0;
         const completionRate = totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0;
         const bestDay = dailyData.reduce((best, d) => d.total > best.total ? d : best, { total: 0, dayNum: 0 });
 
         return {
-            totalCompleted,
+            totalCompleted: dailyData.reduce((sum, d) => sum + d.total, 0),
             avgPerDay,
             completionRate,
             bestDay: bestDay.dayNum,
             daysTracked: daysToInclude.length,
         };
-    }, [dailyData, daysToInclude, allActivityDefs]);
+    }, [dailyData, daysToInclude]);
 
     // Per-activity total hours for multi-day view
     const activityHoursSummary = useMemo(() => {

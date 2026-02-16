@@ -239,6 +239,23 @@ export function AuthProvider({ children }) {
         }
     };
 
+    const updatePassword = async (newPassword) => {
+        if (!user) {
+            return { error: { message: 'Tidak terautentikasi' } };
+        }
+
+        try {
+            const { data, error } = await supabase.auth.updateUser({
+                password: newPassword,
+            });
+
+            if (error) throw error;
+            return { data, error: null };
+        } catch (error) {
+            return { data: null, error };
+        }
+    };
+
     const isAdmin = profile?.role === 'admin';
     const isGroupAdmin = profile?.role === 'group_admin';
 
@@ -253,6 +270,7 @@ export function AuthProvider({ children }) {
         signIn,
         signOut,
         updateProfile,
+        updatePassword,
         fetchProfile,
     };
 

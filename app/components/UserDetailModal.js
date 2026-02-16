@@ -171,11 +171,32 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
         const pc = DEFAULT_PRAYERS.filter(p => dayActs[p.id]?.completed).length;
         const sc = DEFAULT_SUNNAH.filter(s => dayActs[s.id]?.completed).length;
         const ac = DEFAULT_ACTIVITIES.filter(a => dayActs[a.id]?.completed).length;
-        const cc = customActivities.filter(c => dayActs[c.id]?.completed).length;
+
+        // Only count custom activities that were actually added for this day
+        const addedCustomForDay = customActivities.filter(ca => dayActs[ca.id]?.added);
+        const cc = addedCustomForDay.filter(c => dayActs[c.id]?.completed).length;
+
         const total = pc + sc + ac + cc;
-        const max = allActivityDefs.length;
-        return { day: `H${day}`, dayNum: day, sholat: pc, sunnah: sc, aktivitas: ac, custom: cc, total, percentage: max > 0 ? Math.round((total / max) * 100) : 0 };
-    }), [daysToInclude, activities, allActivityDefs, customActivities]);
+        // maxTotal = defaults + added customs for this specific day
+        const max = DEFAULT_PRAYERS.length + DEFAULT_SUNNAH.length + DEFAULT_ACTIVITIES.length + addedCustomForDay.length;
+
+        // Check if there's tadarus/quran reading progress for this day
+        const hasTadarus = quranReadings.some(r => r.readDate === dateStr);
+
+        // Calculate percentage: if all activities done + has tadarus → 100%
+        let percentage;
+        if (max > 0 && total >= max && hasTadarus) {
+            percentage = 100;
+        } else if (max > 0) {
+            const adjustedTotal = total + (hasTadarus ? 1 : 0);
+            const adjustedMax = max + 1; // +1 for tadarus slot
+            percentage = Math.round((adjustedTotal / adjustedMax) * 100);
+        } else {
+            percentage = hasTadarus ? 100 : 0;
+        }
+
+        return { day: `H${day}`, dayNum: day, sholat: pc, sunnah: sc, aktivitas: ac, custom: cc, total, maxTotal: max, hasTadarus, percentage };
+    }), [daysToInclude, activities, customActivities, quranReadings]);
 
     // Category summary for pie
     const categorySummary = useMemo(() => {
@@ -195,13 +216,15 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
 
     // Stats
     const stats = useMemo(() => {
-        const totalPossible = daysToInclude.length * allActivityDefs.length;
-        const totalCompleted = dailyData.reduce((s, d) => s + d.total, 0);
-        const avg = daysToInclude.length > 0 ? Math.round(totalCompleted / daysToInclude.length * 10) / 10 : 0;
+        // Sum up per-day maxTotal (adjusted with tadarus) instead of using a flat multiplier
+        const totalCompleted = dailyData.reduce((s, d) => s + d.total + (d.hasTadarus ? 1 : 0), 0);
+        const totalPossible = dailyData.reduce((s, d) => s + d.maxTotal + 1, 0); // +1 per day for tadarus
+        const actualCompleted = dailyData.reduce((s, d) => s + d.total, 0);
+        const avg = daysToInclude.length > 0 ? Math.round(actualCompleted / daysToInclude.length * 10) / 10 : 0;
         const rate = totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0;
         const best = dailyData.reduce((b, d) => d.total > b.total ? d : b, { total: 0, dayNum: 0 });
-        return { totalCompleted, avgPerDay: avg, completionRate: rate, bestDay: best.dayNum };
-    }, [dailyData, daysToInclude, allActivityDefs]);
+        return { totalCompleted: actualCompleted, avgPerDay: avg, completionRate: rate, bestDay: best.dayNum };
+    }, [dailyData, daysToInclude]);
 
     // Single day detail for clock chart
     const singleDayDetail = useMemo(() => {

@@ -7,7 +7,7 @@ import { USER_GROUPS } from '../data/userGroups';
 
 export default function Header() {
     const { currentRamadanDay, announcements, addToast } = useApp();
-    const { user, profile, signOut, updateProfile } = useAuth();
+    const { user, profile, signOut, updateProfile, updatePassword } = useAuth();
 
     // Digital clock state (WIB = UTC+7)
     const [clock, setClock] = useState('');
@@ -16,10 +16,57 @@ export default function Header() {
     // Profile dropdown
     const [showDropdown, setShowDropdown] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [editName, setEditName] = useState('');
     const [editGroup, setEditGroup] = useState('');
     const [saving, setSaving] = useState(false);
     const dropdownRef = useRef(null);
+
+    // Password change
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showNewPwd, setShowNewPwd] = useState(false);
+    const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
+
+    // Announcement Slider
+    const [announcementIndex, setAnnouncementIndex] = useState(0);
+    const [touchStart, setTouchStart] = useState(null);
+    const [touchEnd, setTouchEnd] = useState(null);
+
+    // Auto-slide announcements
+    useEffect(() => {
+        if (!announcements || announcements.length <= 1) return;
+        const interval = setInterval(() => {
+            setAnnouncementIndex(prev => (prev + 1) % announcements.length);
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [announcements]);
+
+    // Swipe handlers
+    const onTouchStart = (e) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onTouchMove = (e) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const onTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > 50;
+        const isRightSwipe = distance < -50;
+
+        if (isLeftSwipe) {
+            // Next
+            setAnnouncementIndex(prev => (prev + 1) % announcements.length);
+        } else if (isRightSwipe) {
+            // Prev
+            setAnnouncementIndex(prev => (prev - 1 + announcements.length) % announcements.length);
+        }
+    };
 
     useEffect(() => {
         const updateClock = () => {
@@ -111,6 +158,41 @@ export default function Header() {
         setShowDropdown(false);
         await signOut();
         addToast('👋 Berhasil logout', 'info');
+    };
+
+    const handleOpenPasswordModal = () => {
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowNewPwd(false);
+        setShowConfirmPwd(false);
+        setShowDropdown(false);
+        setShowPasswordModal(true);
+    };
+
+    const handleChangePassword = async () => {
+        if (!newPassword.trim()) {
+            addToast('❌ Password baru tidak boleh kosong', 'error');
+            return;
+        }
+        if (newPassword.length < 6) {
+            addToast('❌ Password minimal 6 karakter', 'error');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            addToast('❌ Password baru dan konfirmasi tidak cocok', 'error');
+            return;
+        }
+
+        setSavingPassword(true);
+        const { error } = await updatePassword(newPassword);
+        setSavingPassword(false);
+
+        if (error) {
+            addToast(`❌ Gagal mengubah password: ${error.message}`, 'error');
+        } else {
+            addToast('✅ Password berhasil diubah!', 'success');
+            setShowPasswordModal(false);
+        }
     };
 
     return (
@@ -273,6 +355,37 @@ export default function Header() {
                                             }} />
 
                                             <button
+                                                onClick={handleOpenPasswordModal}
+                                                style={{
+                                                    width: '100%',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    padding: '10px 12px',
+                                                    border: 'none',
+                                                    background: 'transparent',
+                                                    color: 'var(--dark-200)',
+                                                    fontSize: '13px',
+                                                    fontWeight: '500',
+                                                    cursor: 'pointer',
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    transition: 'background 0.15s ease',
+                                                    textAlign: 'left',
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                            >
+                                                <span style={{ fontSize: '16px' }}>🔒</span>
+                                                Ubah Password
+                                            </button>
+
+                                            <div style={{
+                                                height: '1px',
+                                                background: 'var(--dark-600)',
+                                                margin: '4px 8px',
+                                            }} />
+
+                                            <button
                                                 onClick={handleLogout}
                                                 style={{
                                                     width: '100%',
@@ -323,37 +436,79 @@ export default function Header() {
                     }}>{headerSubtitle}</span>
                 </div>
 
-                {/* Announcement Banner */}
+                {/* Announcement Banner Slider */}
                 {announcements && announcements.length > 0 && (
-                    <div style={{
-                        marginTop: '12px',
-                        padding: '10px 14px',
-                        background: 'rgba(251, 191, 36, 0.15)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid rgba(251, 191, 36, 0.3)',
-                    }}>
+                    <div
+                        onTouchStart={onTouchStart}
+                        onTouchMove={onTouchMove}
+                        onTouchEnd={onTouchEnd}
+                        style={{
+                            marginTop: '12px',
+                            minHeight: '80px', // Prevent layout shift
+                            position: 'relative',
+                        }}
+                    >
                         <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            fontSize: '12px',
+                            padding: '10px 14px',
+                            background: 'rgba(251, 191, 36, 0.15)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid rgba(251, 191, 36, 0.3)',
+                            transition: 'opacity 0.3s ease',
                         }}>
-                            <span>📢</span>
-                            <span style={{ color: 'var(--gold-400)', fontWeight: '600' }}>
-                                {announcements[0].title}
-                            </span>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '12px',
+                                justifyContent: 'space-between',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>📢</span>
+                                    <span style={{ color: 'var(--gold-400)', fontWeight: '600' }}>
+                                        {announcements[announcementIndex].title}
+                                    </span>
+                                </div>
+                                {announcements.length > 1 && (
+                                    <span style={{ fontSize: '10px', color: 'var(--dark-400)' }}>
+                                        {announcementIndex + 1}/{announcements.length}
+                                    </span>
+                                )}
+                            </div>
+                            <p style={{
+                                fontSize: '11px',
+                                color: 'var(--dark-200)',
+                                marginTop: '4px',
+                                lineHeight: '1.5',
+                            }}>
+                                {announcements[announcementIndex].content.length > 80
+                                    ? announcements[announcementIndex].content.substring(0, 80) + '...'
+                                    : announcements[announcementIndex].content
+                                }
+                            </p>
                         </div>
-                        <p style={{
-                            fontSize: '11px',
-                            color: 'var(--dark-200)',
-                            marginTop: '4px',
-                            lineHeight: '1.5',
-                        }}>
-                            {announcements[0].content.length > 80
-                                ? announcements[0].content.substring(0, 80) + '...'
-                                : announcements[0].content
-                            }
-                        </p>
+
+                        {/* Dots Indicator */}
+                        {announcements.length > 1 && (
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                marginTop: '6px',
+                            }}>
+                                {announcements.map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        style={{
+                                            width: '6px',
+                                            height: '6px',
+                                            borderRadius: '50%',
+                                            background: idx === announcementIndex ? 'var(--gold-400)' : 'var(--dark-600)',
+                                            transition: 'background 0.3s ease',
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </header>
@@ -496,6 +651,174 @@ export default function Header() {
                                 }}
                             >
                                 {saving ? 'Menyimpan...' : 'Simpan'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Change Password Modal */}
+            <div
+                className={`modal-overlay ${showPasswordModal ? 'active' : ''}`}
+                onClick={() => !savingPassword && setShowPasswordModal(false)}
+            >
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="modal-handle"></div>
+                    <div style={{ padding: '10px 0 20px' }}>
+                        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔐</div>
+                            <h2 style={{
+                                fontSize: '18px',
+                                fontWeight: '700',
+                                color: 'var(--dark-100)',
+                            }}>
+                                Ubah Password
+                            </h2>
+                            <p style={{
+                                fontSize: '12px',
+                                color: 'var(--dark-400)',
+                                marginTop: '4px',
+                            }}>
+                                Masukkan password baru untuk akun Anda
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: 'var(--dark-300)',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                }}>
+                                    Password Baru
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type={showNewPwd ? 'text' : 'password'}
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        placeholder="Minimal 6 karakter"
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px 44px 12px 14px',
+                                            background: 'var(--dark-700)',
+                                            border: '1px solid var(--dark-600)',
+                                            borderRadius: 'var(--radius-md)',
+                                            color: 'var(--dark-100)',
+                                            fontSize: '14px',
+                                            fontFamily: 'inherit',
+                                            outline: 'none',
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = 'var(--emerald-500)'}
+                                        onBlur={(e) => e.target.style.borderColor = 'var(--dark-600)'}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewPwd(!showNewPwd)}
+                                        style={{
+                                            position: 'absolute',
+                                            right: '8px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '16px',
+                                            padding: '4px',
+                                        }}
+                                    >
+                                        {showNewPwd ? '🙈' : '👁️'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: 'var(--dark-300)',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                }}>
+                                    Konfirmasi Password
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type={showConfirmPwd ? 'text' : 'password'}
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        placeholder="Ulangi password baru"
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px 44px 12px 14px',
+                                            background: 'var(--dark-700)',
+                                            border: `1px solid ${confirmPassword && confirmPassword !== newPassword ? '#ef4444' : 'var(--dark-600)'}`,
+                                            borderRadius: 'var(--radius-md)',
+                                            color: 'var(--dark-100)',
+                                            fontSize: '14px',
+                                            fontFamily: 'inherit',
+                                            outline: 'none',
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = confirmPassword && confirmPassword !== newPassword ? '#ef4444' : 'var(--emerald-500)'}
+                                        onBlur={(e) => e.target.style.borderColor = confirmPassword && confirmPassword !== newPassword ? '#ef4444' : 'var(--dark-600)'}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPwd(!showConfirmPwd)}
+                                        style={{
+                                            position: 'absolute',
+                                            right: '8px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '16px',
+                                            padding: '4px',
+                                        }}
+                                    >
+                                        {showConfirmPwd ? '🙈' : '👁️'}
+                                    </button>
+                                </div>
+                                {confirmPassword && confirmPassword !== newPassword && (
+                                    <div style={{ fontSize: '11px', color: '#f87171', marginTop: '4px' }}>
+                                        ❌ Password tidak cocok
+                                    </div>
+                                )}
+                                {confirmPassword && confirmPassword === newPassword && newPassword.length >= 6 && (
+                                    <div style={{ fontSize: '11px', color: '#34d399', marginTop: '4px' }}>
+                                        ✅ Password cocok
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setShowPasswordModal(false)}
+                                disabled={savingPassword}
+                                style={{ flex: 1 }}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleChangePassword}
+                                disabled={savingPassword || !newPassword.trim() || newPassword !== confirmPassword}
+                                style={{
+                                    flex: 1,
+                                    opacity: (savingPassword || !newPassword.trim() || newPassword !== confirmPassword) ? 0.6 : 1,
+                                    cursor: (savingPassword || !newPassword.trim() || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {savingPassword ? 'Menyimpan...' : '🔒 Ubah Password'}
                             </button>
                         </div>
                     </div>

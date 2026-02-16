@@ -15,17 +15,25 @@ export default function SettingsPage() {
         addToast,
     } = useApp();
 
-    const { user, profile, signOut, isAdmin, updateProfile } = useAuth();
+    const { user, profile, signOut, isAdmin, updateProfile, updatePassword } = useAuth();
     const { themeMode, setThemeMode, resolvedTheme } = useTheme();
 
     const [showResetModal, setShowResetModal] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [editName, setEditName] = useState('');
     const [editGroup, setEditGroup] = useState('');
     const [savingProfile, setSavingProfile] = useState(false);
     const [isPWAInstalled, setIsPWAInstalled] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+    // Password change
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [savingPassword, setSavingPassword] = useState(false);
 
     useEffect(() => {
         if (window.matchMedia('(display-mode: standalone)').matches) {
@@ -118,6 +126,40 @@ export default function SettingsPage() {
         addToast('💾 Data berhasil diekspor!', 'success');
     };
 
+    const handleOpenPasswordModal = () => {
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowNewPassword(false);
+        setShowConfirmPassword(false);
+        setShowPasswordModal(true);
+    };
+
+    const handleChangePassword = async () => {
+        if (!newPassword.trim()) {
+            addToast('❌ Password baru tidak boleh kosong', 'error');
+            return;
+        }
+        if (newPassword.length < 6) {
+            addToast('❌ Password minimal 6 karakter', 'error');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            addToast('❌ Password baru dan konfirmasi tidak cocok', 'error');
+            return;
+        }
+
+        setSavingPassword(true);
+        const { error } = await updatePassword(newPassword);
+        setSavingPassword(false);
+
+        if (error) {
+            addToast(`❌ Gagal mengubah password: ${error.message}`, 'error');
+        } else {
+            addToast('✅ Password berhasil diubah!', 'success');
+            setShowPasswordModal(false);
+        }
+    };
+
     const settingsItems = [
         {
             icon: '✏️',
@@ -125,6 +167,13 @@ export default function SettingsPage() {
             desc: 'Ubah nama & grup pengguna',
             action: 'chevron',
             onClick: handleOpenEditProfile
+        },
+        {
+            icon: '🔒',
+            label: 'Ubah Password',
+            desc: 'Ganti password akun Anda',
+            action: 'chevron',
+            onClick: handleOpenPasswordModal
         },
         {
             icon: '🔔',
@@ -419,9 +468,7 @@ export default function SettingsPage() {
                     border: '1px solid rgba(255,255,255,0.05)'
                 }}>
                     <p style={{ fontSize: '14px', color: 'var(--dark-300)', lineHeight: '1.7' }}>
-                        Ramadhan Tracker adalah aplikasi untuk membantu umat Muslim mencatat dan memantau
-                        aktivitas ibadah harian selama bulan Ramadhan. Dilengkapi fitur komunitas, leaderboard,
-                        dan statistik bersama.
+                        Aplikasi ini dipersembahkan penuh 🤍, semoga bisa bermanfaat dan menjadi amal jariyah bagi kita semua.
                     </p>
                     <div style={{
                         marginTop: '16px',
@@ -431,22 +478,6 @@ export default function SettingsPage() {
                         justifyContent: 'center',
                         gap: '24px'
                     }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px' }}>📚</div>
-                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>PWA Ready</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px' }}>☁️</div>
-                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>Cloud Sync</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px' }}>🏆</div>
-                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>Leaderboard</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '24px' }}>👥</div>
-                            <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '4px' }}>Komunitas</div>
-                        </div>
                     </div>
                 </div>
             </section>
@@ -653,6 +684,176 @@ export default function SettingsPage() {
                                 }}
                             >
                                 {savingProfile ? 'Menyimpan...' : 'Simpan'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Change Password Modal */}
+            <div
+                className={`modal-overlay ${showPasswordModal ? 'active' : ''}`}
+                onClick={() => !savingPassword && setShowPasswordModal(false)}
+            >
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="modal-handle"></div>
+                    <div style={{ padding: '10px 0 20px' }}>
+                        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔐</div>
+                            <h2 style={{
+                                fontSize: '18px',
+                                fontWeight: '700',
+                                color: 'var(--dark-100)',
+                            }}>
+                                Ubah Password
+                            </h2>
+                            <p style={{
+                                fontSize: '12px',
+                                color: 'var(--dark-400)',
+                                marginTop: '4px',
+                            }}>
+                                Masukkan password baru untuk akun Anda
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: 'var(--dark-300)',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                }}>
+                                    Password Baru
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type={showNewPassword ? 'text' : 'password'}
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        placeholder="Minimal 6 karakter"
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px 44px 12px 14px',
+                                            background: 'var(--dark-700)',
+                                            border: '1px solid var(--dark-600)',
+                                            borderRadius: 'var(--radius-md)',
+                                            color: 'var(--dark-100)',
+                                            fontSize: '14px',
+                                            fontFamily: 'inherit',
+                                            outline: 'none',
+                                            transition: 'border-color 0.2s ease',
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = 'var(--emerald-500)'}
+                                        onBlur={(e) => e.target.style.borderColor = 'var(--dark-600)'}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewPassword(!showNewPassword)}
+                                        style={{
+                                            position: 'absolute',
+                                            right: '8px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '16px',
+                                            padding: '4px',
+                                        }}
+                                    >
+                                        {showNewPassword ? '🙈' : '👁️'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: 'var(--dark-300)',
+                                    marginBottom: '6px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                }}>
+                                    Konfirmasi Password
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type={showConfirmPassword ? 'text' : 'password'}
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        placeholder="Ulangi password baru"
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px 44px 12px 14px',
+                                            background: 'var(--dark-700)',
+                                            border: `1px solid ${confirmPassword && confirmPassword !== newPassword ? '#ef4444' : 'var(--dark-600)'}`,
+                                            borderRadius: 'var(--radius-md)',
+                                            color: 'var(--dark-100)',
+                                            fontSize: '14px',
+                                            fontFamily: 'inherit',
+                                            outline: 'none',
+                                            transition: 'border-color 0.2s ease',
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = confirmPassword && confirmPassword !== newPassword ? '#ef4444' : 'var(--emerald-500)'}
+                                        onBlur={(e) => e.target.style.borderColor = confirmPassword && confirmPassword !== newPassword ? '#ef4444' : 'var(--dark-600)'}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        style={{
+                                            position: 'absolute',
+                                            right: '8px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '16px',
+                                            padding: '4px',
+                                        }}
+                                    >
+                                        {showConfirmPassword ? '🙈' : '👁️'}
+                                    </button>
+                                </div>
+                                {confirmPassword && confirmPassword !== newPassword && (
+                                    <div style={{ fontSize: '11px', color: '#f87171', marginTop: '4px' }}>
+                                        ❌ Password tidak cocok
+                                    </div>
+                                )}
+                                {confirmPassword && confirmPassword === newPassword && newPassword.length >= 6 && (
+                                    <div style={{ fontSize: '11px', color: '#34d399', marginTop: '4px' }}>
+                                        ✅ Password cocok
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setShowPasswordModal(false)}
+                                disabled={savingPassword}
+                                style={{ flex: 1 }}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleChangePassword}
+                                disabled={savingPassword || !newPassword.trim() || newPassword !== confirmPassword}
+                                style={{
+                                    flex: 1,
+                                    opacity: (savingPassword || !newPassword.trim() || newPassword !== confirmPassword) ? 0.6 : 1,
+                                    cursor: (savingPassword || !newPassword.trim() || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {savingPassword ? 'Menyimpan...' : '🔒 Ubah Password'}
                             </button>
                         </div>
                     </div>

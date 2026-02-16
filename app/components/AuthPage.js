@@ -189,28 +189,23 @@ export default function AuthPage() {
                 </form>
 
                 {/* Toggle */}
-                <div style={{ textAlign: 'center' }}>
+                {/* Contact Admin */}
+                <div style={{ textAlign: 'center', marginTop: '16px' }}>
                     <p style={{ fontSize: '13px', color: 'var(--dark-400)' }}>
-                        {isLogin ? 'Belum punya akun?' : 'Sudah punya akun?'}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setIsLogin(!isLogin);
-                                setError('');
-                                setSuccess('');
-                                setUserGroup('');
-                            }}
+                        Jika ada kendala{' '}
+                        <a
+                            href="https://wa.me/6285795672224"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             style={{
-                                background: 'none',
-                                border: 'none',
                                 color: 'var(--emerald-400)',
                                 fontWeight: '600',
+                                textDecoration: 'none',
                                 cursor: 'pointer',
-                                marginLeft: '6px',
                             }}
                         >
-                            {isLogin ? 'Daftar Sekarang' : 'Masuk'}
-                        </button>
+                            hubungi admin
+                        </a>
                     </p>
                 </div>
             </div>

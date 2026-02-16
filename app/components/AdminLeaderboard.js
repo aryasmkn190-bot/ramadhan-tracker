@@ -70,7 +70,11 @@ export default function AdminLeaderboard() {
 
                 // For "all" filter mode (default), we can use RPC data directly
                 // For date-filtered views, we'll re-call RPC with date params
-                setAllActivities([]); // Not needed when using RPC
+                // Still fetch activities for idle hours calculation (needs start_time/end_time)
+                const actRes = await supabase
+                    .from('daily_activities')
+                    .select('user_id, activity_date, activity_id, completed, start_time, end_time');
+                if (actRes.data) setAllActivities(actRes.data);
                 setQuranData([]); // Not needed when using RPC
             } else {
                 // Fallback to original queries if RPC not available
@@ -79,7 +83,7 @@ export default function AdminLeaderboard() {
 
                 const [profilesRes, activitiesRes, quranRes] = await Promise.all([
                     supabase.from('profiles').select('id, full_name, user_group, role, email'),
-                    supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed'),
+                    supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed, start_time, end_time'),
                     supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
                 ]);
 
@@ -159,23 +163,103 @@ export default function AdminLeaderboard() {
         return new Set(customActivitiesList.filter(ca => ca.category === 'amanah').map(ca => `custom_${ca.id}`));
     }, [customActivitiesList]);
 
+    // Helper: parse "HH:MM" to fractional hours (same as DailyClockChart)
+    const parseTime = (timeStr) => {
+        if (!timeStr) return null;
+        const m = timeStr.match(/(\d{1,2}):(\d{2})/);
+        if (!m) return null;
+        return parseInt(m[1]) + parseInt(m[2]) / 60;
+    };
+
+    // Calculate idle hours for a set of activities on a single day
+    // Same algorithm as DailyClockChart: merge time intervals, find gaps in 0-24
+    const calcIdleHours = (activities) => {
+        const intervals = [];
+        activities.forEach(a => {
+            if (!a.start_time) return;
+            // Multi-session
+            if (a.start_time && a.end_time === '__multi__') {
+                try {
+                    JSON.parse(a.start_time).forEach(s => {
+                        if (s.start) {
+                            const startH = parseTime(s.start);
+                            if (startH === null || startH < 0 || startH >= 24) return;
+                            let endH = s.end ? parseTime(s.end) : null;
+                            if (endH === null) endH = Math.min(startH + 1, 24);
+                            if (endH < startH) endH = 24;
+                            if (endH > 24) endH = 24;
+                            intervals.push([startH, endH]);
+                        }
+                    });
+                } catch { }
+            } else {
+                const startH = parseTime(a.start_time);
+                if (startH === null || startH < 0 || startH >= 24) return;
+                let endH = a.end_time ? parseTime(a.end_time) : null;
+                if (endH === null) endH = Math.min(startH + 1, 24);
+                if (endH < startH) endH = 24;
+                if (endH > 24) endH = 24;
+                intervals.push([startH, endH]);
+            }
+        });
+        if (intervals.length === 0) return 24; // no timed activities = 24h idle
+        // Merge overlapping intervals
+        intervals.sort((a, b) => a[0] - b[0]);
+        const merged = [];
+        intervals.forEach(([s, e]) => {
+            if (merged.length > 0 && s <= merged[merged.length - 1][1]) {
+                merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+            } else {
+                merged.push([s, e]);
+            }
+        });
+        // Sum gaps
+        let idle = 0;
+        let cursor = 0;
+        merged.forEach(([s, e]) => {
+            if (s > cursor) idle += (s - cursor);
+            cursor = Math.max(cursor, e);
+        });
+        if (cursor < 24) idle += (24 - cursor);
+        return idle;
+    };
+
+    // Total days in current filter range
+    const totalDaysInRange = filteredDates.length;
+
     const rankedUsers = useMemo(() => {
+        // Helper: compute idle hours per user from allActivities
+        const computeUserIdleHours = (userId) => {
+            let totalIdle = 0;
+            filteredDates.forEach(date => {
+                const dayActs = allActivities.filter(a =>
+                    a.user_id === userId && a.activity_date === date && a.completed
+                );
+                totalIdle += calcIdleHours(dayActs);
+            });
+            return Math.round(totalIdle);
+        };
+
         // RPC mode: data is already aggregated by the database
         if (useRpc === true && rpcLeaderboardData.length > 0) {
-            let users = rpcLeaderboardData.map(r => ({
-                id: r.user_id,
-                full_name: r.full_name,
-                user_group: r.user_group,
-                email: r.email,
-                role: r.role,
-                sholat: Number(r.sholat) || 0,
-                sunnah: Number(r.sunnah) || 0,
-                aktivitas: Number(r.aktivitas) || 0,
-                custom: Number(r.custom) || 0,
-                amanah: Number(r.amanah) || 0,
-                total: Number(r.total) || 0,
-                quran_ayat: Number(r.quran_ayat) || Number(r.quran_sessions) || 0,
-            }));
+            let users = rpcLeaderboardData.map(r => {
+                const total = Number(r.total) || 0;
+                return {
+                    id: r.user_id,
+                    full_name: r.full_name,
+                    user_group: r.user_group,
+                    email: r.email,
+                    role: r.role,
+                    sholat: Number(r.sholat) || 0,
+                    sunnah: Number(r.sunnah) || 0,
+                    aktivitas: Number(r.aktivitas) || 0,
+                    custom: Number(r.custom) || 0,
+                    amanah: Number(r.amanah) || 0,
+                    total,
+                    quran_ayat: Number(r.quran_ayat) || Number(r.quran_sessions) || 0,
+                    idle_hours: computeUserIdleHours(r.user_id),
+                };
+            });
 
             // Sort client-side
             users.sort((a, b) => {
@@ -184,18 +268,22 @@ export default function AdminLeaderboard() {
                 if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
                 if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
                 if (rankBy === 'amanah') return b.amanah - a.amanah;
+                if (rankBy === 'idle') return b.idle_hours - a.idle_hours || a.total - b.total;
                 return b.total - a.total;
             });
 
             return users;
         }
 
-        // Fallback mode: client-side aggregation (original behavior)
+        // Fallback mode: client-side aggregation
         const relevantActivities = allActivities.filter(a =>
             a.completed && filteredDates.includes(a.activity_date)
         );
 
         const userStats = {};
+        // Group activities by user+date for idle calculation
+        const userDateActivities = {}; // { `${userId}_${date}`: [activities] }
+
         profiles.forEach(p => {
             userStats[p.id] = {
                 id: p.id,
@@ -228,6 +316,11 @@ export default function AdminLeaderboard() {
                 userStats[a.user_id].custom++;
             }
             userStats[a.user_id].total++;
+
+            // Group by user+date for idle calculation
+            const key = `${a.user_id}_${a.activity_date}`;
+            if (!userDateActivities[key]) userDateActivities[key] = [];
+            userDateActivities[key].push(a);
         });
 
         // Quran: count total ayat instead of sessions
@@ -238,6 +331,17 @@ export default function AdminLeaderboard() {
                 ? Math.max(q.end_ayat - q.start_ayat + 1, 1)
                 : 1;
             userStats[q.user_id].quran_ayat += ayatCount;
+        });
+
+        // Calculate total idle hours per user
+        Object.keys(userStats).forEach(uid => {
+            let totalIdle = 0;
+            filteredDates.forEach(date => {
+                const key = `${uid}_${date}`;
+                const dayActs = userDateActivities[key] || [];
+                totalIdle += calcIdleHours(dayActs);
+            });
+            userStats[uid].idle_hours = Math.round(totalIdle);
         });
 
         let users = Object.values(userStats);
@@ -251,11 +355,12 @@ export default function AdminLeaderboard() {
             if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
             if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
             if (rankBy === 'amanah') return b.amanah - a.amanah;
+            if (rankBy === 'idle') return b.idle_hours - a.idle_hours || a.total - b.total;
             return b.total - a.total;
         });
 
         return users;
-    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy, amanahIds]);
+    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy, amanahIds, totalDaysInRange]);
 
     // Group ranking (aggregated scores)
     const groupRanking = useMemo(() => {
@@ -300,6 +405,7 @@ export default function AdminLeaderboard() {
         if (rankBy === 'sunnah') return `${user.sunnah}x`;
         if (rankBy === 'aktivitas') return `${user.aktivitas + user.custom}x`;
         if (rankBy === 'amanah') return `${user.amanah}x`;
+        if (rankBy === 'idle') return `${user.idle_hours} jam`;
         return `${user.total}x`;
     };
 
@@ -437,6 +543,7 @@ export default function AdminLeaderboard() {
                     { id: 'aktivitas', label: '📋 Aktivitas', color: '#f59e0b' },
                     { id: 'amanah', label: '🎯 Amanah', color: '#f472b6' },
                     { id: 'quran', label: '📖 Quran', color: '#fbbf24' },
+                    { id: 'idle', label: '⏳ Tidak Ada Aktivitas', color: '#ef4444' },
                 ].map(item => (
                     <button
                         key={item.id}
@@ -719,6 +826,9 @@ export default function AdminLeaderboard() {
                                             <span>📋{user.aktivitas + user.custom}</span>
                                             {user.amanah > 0 && <span>🎯{user.amanah}</span>}
                                             <span>📖{user.quran_ayat} ayat</span>
+                                            {user.idle_hours > 0 && (
+                                                <span style={{ color: '#ef4444' }}>⏳{user.idle_hours}j</span>
+                                            )}
                                         </div>
                                     </div>
 

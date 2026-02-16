@@ -80,12 +80,13 @@ export default function AdminAnnouncementsPage() {
                     .insert({
                         title,
                         content,
-                        created_by: user.id,
+                        author_id: user.id,
                     })
                     .select()
                     .single();
 
                 if (error) throw error;
+                if (!data) throw new Error('No data returned from insert');
 
                 setAnnouncements(prev => [data, ...prev]);
                 addToast('✅ Pengumuman berhasil dibuat', 'success');
@@ -93,8 +94,8 @@ export default function AdminAnnouncementsPage() {
 
             resetForm();
         } catch (error) {
-            console.error('Error saving announcement:', error);
-            addToast('❌ Gagal menyimpan pengumuman', 'error');
+            console.error('Error saving announcement:', error?.message || error?.code || JSON.stringify(error));
+            addToast(`❌ Gagal menyimpan: ${error?.message || 'Terjadi kesalahan'}`, 'error');
         } finally {
             setSubmitting(false);
         }
@@ -127,8 +128,8 @@ export default function AdminAnnouncementsPage() {
             setShowDeleteModal(false);
             setDeletingItem(null);
         } catch (error) {
-            console.error('Error deleting announcement:', error);
-            addToast('❌ Gagal menghapus pengumuman', 'error');
+            console.error('Error deleting announcement:', error?.message || error?.code || JSON.stringify(error));
+            addToast(`❌ Gagal menghapus: ${error?.message || 'Terjadi kesalahan'}`, 'error');
         }
     };
 

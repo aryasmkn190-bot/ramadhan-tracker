@@ -20,8 +20,13 @@ export default function AdminMembersPage() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
+    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
     const [editingMember, setEditingMember] = useState(null);
     const [deletingMember, setDeletingMember] = useState(null);
+
+    // Bulk selection
+    const [selectedMembers, setSelectedMembers] = useState(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
 
     // Edit form
     const [editName, setEditName] = useState('');
@@ -33,6 +38,7 @@ export default function AdminMembersPage() {
     const [importText, setImportText] = useState('');
     const [importGroup, setImportGroup] = useState('PTO CENTRAL');
     const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState(null); // { skippedUsers, successCount, failCount, skippedCount }
     const fileInputRef = useRef(null);
 
     useEffect(() => {
@@ -146,6 +152,93 @@ export default function AdminMembersPage() {
         setShowDeleteModal(true);
     };
 
+    // Toggle single member selection
+    const toggleMemberSelection = (memberId) => {
+        setSelectedMembers(prev => {
+            const next = new Set(prev);
+            if (next.has(memberId)) {
+                next.delete(memberId);
+            } else {
+                next.add(memberId);
+            }
+            return next;
+        });
+    };
+
+    // Select/deselect all visible members (excluding self)
+    const toggleSelectAll = () => {
+        const selectableIds = membersPagination.paginatedItems
+            .filter(m => m.id !== user.id)
+            .map(m => m.id);
+
+        const allSelected = selectableIds.every(id => selectedMembers.has(id));
+
+        setSelectedMembers(prev => {
+            const next = new Set(prev);
+            if (allSelected) {
+                selectableIds.forEach(id => next.delete(id));
+            } else {
+                selectableIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    // Select all members in the current filtered group (excluding self)
+    const selectAllInGroup = () => {
+        const selectableIds = filteredMembers
+            .filter(m => m.id !== user.id)
+            .map(m => m.id);
+
+        setSelectedMembers(new Set(selectableIds));
+    };
+
+    // Clear selection
+    const clearSelection = () => {
+        setSelectedMembers(new Set());
+    };
+
+    // Bulk delete handler
+    const handleBulkDelete = async () => {
+        if (selectedMembers.size === 0) return;
+
+        setBulkDeleting(true);
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            const response = await fetch('/api/delete-users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token}`,
+                },
+                body: JSON.stringify({ userIds: Array.from(selectedMembers) }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Bulk delete failed');
+            }
+
+            // Remove deleted members from state
+            setMembers(prev => prev.filter(m => !selectedMembers.has(m.id)));
+            setSelectedMembers(new Set());
+            setShowBulkDeleteModal(false);
+
+            let toastMsg = `🗑️ ${result.successCount} anggota berhasil dihapus`;
+            if (result.failCount > 0) toastMsg += `, ${result.failCount} gagal`;
+            addToast(toastMsg, result.successCount > 0 ? 'success' : 'error');
+
+        } catch (error) {
+            console.error('Bulk delete error:', error);
+            addToast(`❌ Gagal menghapus: ${error.message}`, 'error');
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
+
     const handleDeleteMember = async () => {
         if (!deletingMember) return;
         try {
@@ -167,7 +260,88 @@ export default function AdminMembersPage() {
         }
     };
 
-    // Import users
+    // Import progress
+    const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+
+    // Helper: process a single user import line
+    const importSingleUser = async (line, group, adminSession) => {
+        const parts = line.split(',').map(p => p.trim());
+        if (parts.length < 2) {
+            return { success: false, reason: 'format_invalid' };
+        }
+
+        const [name, email, password] = parts;
+        const pwd = password || 'Ramadhan2026!';
+        let userId = null;
+        let needSessionRestore = false;
+
+        // Create user via Supabase auth admin API (doesn't affect current session)
+        const { data, error } = await supabase.auth.admin.createUser({
+            email,
+            password: pwd,
+            email_confirm: true,
+            user_metadata: { full_name: name, user_group: group },
+        });
+
+        if (error) {
+            // Admin API not available from client - use signUp as fallback
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                email,
+                password: pwd,
+                options: {
+                    data: { full_name: name, user_group: group },
+                },
+            });
+
+            if (signUpError) {
+                console.error('SignUp error:', signUpError);
+                return { success: false, reason: signUpError.message };
+            }
+            userId = signUpData?.user?.id;
+            needSessionRestore = true;
+
+            // Immediately restore admin session after signUp
+            if (adminSession) {
+                await supabase.auth.setSession({
+                    access_token: adminSession.access_token,
+                    refresh_token: adminSession.refresh_token,
+                });
+            }
+        } else {
+            userId = data?.user?.id;
+        }
+
+        if (userId) {
+            // Wait briefly for the database trigger to create the profile
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // Now update the profile with user_group
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: name,
+                    user_group: group,
+                    role: 'member',
+                })
+                .eq('id', userId);
+
+            if (updateError) {
+                console.warn('Profile update after import failed:', updateError);
+                // Try upsert as fallback
+                await supabase.from('profiles').upsert({
+                    id: userId,
+                    full_name: name,
+                    email,
+                    user_group: group,
+                    role: 'member',
+                }, { onConflict: 'id' });
+            }
+        }
+
+        return { success: true, needSessionRestore };
+    };
+
+    // Import users - uses server API (service_role) with client-side fallback
     const handleImport = async () => {
         const lines = importText.trim().split('\n').filter(l => l.trim());
         if (lines.length === 0) {
@@ -176,101 +350,111 @@ export default function AdminMembersPage() {
         }
 
         setImporting(true);
+        setImportProgress({ current: 0, total: lines.length });
+
+        // Parse lines into user objects
+        const users = lines.map(line => {
+            const parts = line.split(',').map(p => p.trim());
+            return {
+                name: parts[0] || '',
+                email: parts[1] || '',
+                password: parts[2] || '',
+            };
+        }).filter(u => u.name && u.email);
+
+        if (users.length === 0) {
+            addToast('❌ Format data tidak valid', 'error');
+            setImporting(false);
+            setImportProgress({ current: 0, total: 0 });
+            return;
+        }
+
+        // Get current session token
+        const { data: { session } } = await supabase.auth.getSession();
+
+        // Try server-side API route first (uses service_role key)
+        try {
+            const response = await fetch('/api/import-users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token}`,
+                },
+                body: JSON.stringify({ users, group: importGroup }),
+            });
+
+            const result = await response.json();
+
+            // If server says service_role not configured, use client-side fallback
+            if (result.fallback) {
+                console.warn('Service role key not configured, using client-side fallback...');
+                await handleImportClientFallback(lines, session);
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Server import failed');
+            }
+
+            // Server import succeeded
+            setImportProgress({ current: result.total, total: result.total });
+            setImporting(false);
+            setImportProgress({ current: 0, total: 0 });
+
+            // Build toast message with skip info
+            let toastMsg = `📥 Import selesai: ${result.successCount} berhasil`;
+            if (result.skippedCount > 0) toastMsg += `, ${result.skippedCount} di-skip`;
+            if (result.failCount > 0) toastMsg += `, ${result.failCount} gagal`;
+
+            addToast(toastMsg, result.successCount > 0 ? 'success' : 'error');
+
+            if (result.errors?.length > 0) {
+                console.warn('Import errors:', result.errors);
+            }
+
+            // Store result for displaying skipped users report
+            setImportResult(result);
+
+            if (result.successCount > 0) {
+                setImportText('');
+                fetchMembers();
+            }
+        } catch (apiError) {
+            console.error('API import error, using fallback:', apiError);
+            addToast('⚠️ Server API gagal, menggunakan metode alternatif...', 'warning');
+            await handleImportClientFallback(lines, session);
+        }
+    };
+
+    // Client-side fallback (uses signUp - slower, rate-limited)
+    const handleImportClientFallback = async (lines, adminSession) => {
         let successCount = 0;
         let failCount = 0;
 
-        // Save admin session before import (signUp can hijack the session)
-        const { data: { session: adminSession } } = await supabase.auth.getSession();
-        let sessionWasHijacked = false;
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < lines.length; i += BATCH_SIZE) {
+            const batch = lines.slice(i, i + BATCH_SIZE);
 
-        for (const line of lines) {
-            try {
-                // Format: name,email,password or name,email
-                const parts = line.split(',').map(p => p.trim());
-                if (parts.length < 2) {
-                    failCount++;
-                    continue;
-                }
+            const results = await Promise.allSettled(
+                batch.map(line => importSingleUser(line, importGroup, adminSession))
+            );
 
-                const [name, email, password] = parts;
-                const pwd = password || 'Ramadhan2026!';
-                let userId = null;
-
-                // Create user via Supabase auth admin API (doesn't affect current session)
-                const { data, error } = await supabase.auth.admin.createUser({
-                    email,
-                    password: pwd,
-                    email_confirm: true,
-                    user_metadata: { full_name: name, user_group: importGroup },
-                });
-
-                if (error) {
-                    // Admin API not available from client - use signUp as fallback
-                    // signUp will change the session, so we'll need to restore it
-                    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                        email,
-                        password: pwd,
-                        options: {
-                            data: { full_name: name, user_group: importGroup },
-                        },
-                    });
-
-                    if (signUpError) {
-                        console.error('SignUp error:', signUpError);
-                        failCount++;
-                        continue;
-                    }
-                    userId = signUpData?.user?.id;
-                    sessionWasHijacked = true;
-
-                    // Immediately restore admin session after each signUp
-                    if (adminSession) {
-                        await supabase.auth.setSession({
-                            access_token: adminSession.access_token,
-                            refresh_token: adminSession.refresh_token,
-                        });
-                    }
+            for (const result of results) {
+                if (result.status === 'fulfilled' && result.value.success) {
+                    successCount++;
                 } else {
-                    userId = data?.user?.id;
-                }
-
-                if (userId) {
-                    // Wait briefly for the database trigger to create the profile
-                    await new Promise(resolve => setTimeout(resolve, 500));
-
-                    // Now update the profile with user_group (trigger may have created it without group)
-                    const { error: updateError } = await supabase
-                        .from('profiles')
-                        .update({
-                            full_name: name,
-                            user_group: importGroup,
-                            role: 'member',
-                        })
-                        .eq('id', userId);
-
-                    if (updateError) {
-                        console.warn('Profile update after import failed:', updateError);
-                        // Try upsert as fallback
-                        await supabase.from('profiles').upsert({
-                            id: userId,
-                            full_name: name,
-                            email,
-                            user_group: importGroup,
-                            role: 'member',
-                        }, { onConflict: 'id' });
+                    failCount++;
+                    if (result.status === 'rejected') {
+                        console.error('Import batch error:', result.reason);
                     }
                 }
-
-                successCount++;
-            } catch (error) {
-                console.error('Import error for line:', line, error);
-                failCount++;
             }
+
+            setImportProgress({ current: Math.min(i + BATCH_SIZE, lines.length), total: lines.length });
         }
 
-        // Final session restore - make sure admin is still logged in
-        if (sessionWasHijacked && adminSession) {
-            console.log('Restoring admin session after import...');
+        // Restore admin session
+        if (adminSession) {
             await supabase.auth.setSession({
                 access_token: adminSession.access_token,
                 refresh_token: adminSession.refresh_token,
@@ -278,6 +462,7 @@ export default function AdminMembersPage() {
         }
 
         setImporting(false);
+        setImportProgress({ current: 0, total: 0 });
         addToast(
             `📥 Import selesai: ${successCount} berhasil, ${failCount} gagal`,
             successCount > 0 ? 'success' : 'error'
@@ -393,7 +578,7 @@ export default function AdminMembersPage() {
                     />
                 </div>
                 <button
-                    onClick={() => setShowImportModal(true)}
+                    onClick={() => { setImportResult(null); setShowImportModal(true); }}
                     style={{
                         padding: '10px 14px',
                         background: 'var(--emerald-600)',
@@ -437,11 +622,136 @@ export default function AdminMembersPage() {
                 onPerPageChange={membersPagination.setPerPage}
             />
 
+            {/* Select All Bar */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                background: 'var(--dark-800)',
+                borderRadius: 'var(--radius-lg)',
+                marginBottom: '6px',
+            }}>
+                <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    color: 'var(--dark-300)',
+                    fontWeight: '600',
+                }}>
+                    <input
+                        type="checkbox"
+                        checked={membersPagination.paginatedItems.filter(m => m.id !== user.id).length > 0 &&
+                            membersPagination.paginatedItems.filter(m => m.id !== user.id).every(m => selectedMembers.has(m.id))}
+                        onChange={toggleSelectAll}
+                        style={{
+                            width: '16px',
+                            height: '16px',
+                            accentColor: 'var(--emerald-500)',
+                            cursor: 'pointer',
+                        }}
+                    />
+                    Pilih Semua
+                </label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {selectedMembers.size > 0 && (
+                        <span style={{
+                            fontSize: '11px',
+                            color: 'var(--emerald-400)',
+                            fontWeight: '600',
+                        }}>
+                            {selectedMembers.size} dipilih
+                        </span>
+                    )}
+                    {selectedGroup !== 'all' && (
+                        <button
+                            onClick={selectAllInGroup}
+                            style={{
+                                padding: '4px 10px',
+                                background: 'var(--dark-700)',
+                                border: '1px solid var(--dark-600)',
+                                borderRadius: 'var(--radius-full)',
+                                color: 'var(--dark-300)',
+                                fontSize: '10px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Pilih Semua {selectedGroup}
+                        </button>
+                    )}
+                    {selectedMembers.size > 0 && (
+                        <button
+                            onClick={clearSelection}
+                            style={{
+                                padding: '4px 10px',
+                                background: 'var(--dark-700)',
+                                border: '1px solid var(--dark-600)',
+                                borderRadius: 'var(--radius-full)',
+                                color: 'var(--dark-400)',
+                                fontSize: '10px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Batal Pilih
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Floating bulk action bar */}
+            {selectedMembers.size > 0 && (
+                <div style={{
+                    position: 'sticky',
+                    top: '0',
+                    zIndex: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.1))',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: 'var(--radius-lg)',
+                    marginBottom: '6px',
+                    backdropFilter: 'blur(12px)',
+                }}>
+                    <span style={{
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        color: '#f87171',
+                    }}>
+                        🗑️ {selectedMembers.size} anggota dipilih
+                    </span>
+                    <button
+                        onClick={() => setShowBulkDeleteModal(true)}
+                        style={{
+                            padding: '8px 16px',
+                            background: 'rgba(239, 68, 68, 0.9)',
+                            border: 'none',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                        }}
+                    >
+                        🗑️ Hapus Semua
+                    </button>
+                </div>
+            )}
+
             {/* Members List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {membersPagination.paginatedItems.map(member => {
                     const groupColor = GROUP_COLORS[member.user_group];
                     const isSelf = member.id === user.id;
+                    const isSelected = selectedMembers.has(member.id);
 
                     return (
                         <div
@@ -451,15 +761,37 @@ export default function AdminMembersPage() {
                                 alignItems: 'center',
                                 gap: '10px',
                                 padding: '12px',
-                                background: isSelf
-                                    ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.05))'
-                                    : 'var(--dark-800)',
+                                background: isSelected
+                                    ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(220, 38, 38, 0.05))'
+                                    : isSelf
+                                        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.05))'
+                                        : 'var(--dark-800)',
                                 borderRadius: 'var(--radius-lg)',
-                                border: isSelf
-                                    ? '1px solid rgba(16, 185, 129, 0.2)'
-                                    : '1px solid transparent',
+                                border: isSelected
+                                    ? '1px solid rgba(239, 68, 68, 0.3)'
+                                    : isSelf
+                                        ? '1px solid rgba(16, 185, 129, 0.2)'
+                                        : '1px solid transparent',
+                                transition: 'all 0.15s ease',
                             }}
                         >
+                            {/* Checkbox */}
+                            {!isSelf ? (
+                                <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleMemberSelection(member.id)}
+                                    style={{
+                                        width: '16px',
+                                        height: '16px',
+                                        accentColor: '#ef4444',
+                                        cursor: 'pointer',
+                                        flexShrink: 0,
+                                    }}
+                                />
+                            ) : (
+                                <div style={{ width: '16px', flexShrink: 0 }} />
+                            )}
                             {/* Avatar */}
                             <div style={{
                                 width: '36px',
@@ -788,6 +1120,70 @@ export default function AdminMembersPage() {
                 </div>
             </div>
 
+            {/* Bulk Delete Confirmation Modal */}
+            <div
+                className={`modal-overlay ${showBulkDeleteModal ? 'active' : ''}`}
+                onClick={() => !bulkDeleting && setShowBulkDeleteModal(false)}
+            >
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="modal-handle"></div>
+                    <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚨</div>
+                        <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#f87171', marginBottom: '8px' }}>
+                            Hapus {selectedMembers.size} Anggota?
+                        </h2>
+                        <p style={{ color: 'var(--dark-400)', fontSize: '13px', marginBottom: '12px' }}>
+                            Semua data aktivitas, progress Quran, dan profil dari <strong style={{ color: '#f87171' }}>{selectedMembers.size} anggota</strong> akan dihapus permanen.
+                        </p>
+
+                        {/* List of selected members */}
+                        <div style={{
+                            maxHeight: '150px',
+                            overflowY: 'auto',
+                            background: 'rgba(239, 68, 68, 0.05)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '8px',
+                            marginBottom: '20px',
+                            border: '1px solid rgba(239, 68, 68, 0.15)',
+                        }}>
+                            {members.filter(m => selectedMembers.has(m.id)).map(m => (
+                                <div key={m.id} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    padding: '4px 8px',
+                                    fontSize: '11px',
+                                }}>
+                                    <span style={{ color: 'var(--dark-200)', fontWeight: '600' }}>{m.full_name}</span>
+                                    <span style={{ color: 'var(--dark-500)' }}>{m.user_group || 'No Group'}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <p style={{ color: '#f87171', fontSize: '11px', fontWeight: '700', marginBottom: '20px' }}>
+                            ⚠️ Aksi ini TIDAK BISA dibatalkan!
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setShowBulkDeleteModal(false)}
+                                disabled={bulkDeleting}
+                                style={{ flex: 1 }}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleBulkDelete}
+                                disabled={bulkDeleting}
+                                style={{ flex: 1, background: '#dc2626', opacity: bulkDeleting ? 0.6 : 1 }}
+                            >
+                                {bulkDeleting ? '⏳ Menghapus...' : `🗑️ Hapus ${selectedMembers.size} Anggota`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Import Modal */}
             <div
                 className={`modal-overlay ${showImportModal ? 'active' : ''}`}
@@ -893,6 +1289,157 @@ export default function AdminMembersPage() {
                                 resize: 'none',
                             }}
                         />
+
+                        {/* Import progress bar */}
+                        {importing && importProgress.total > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    fontSize: '11px',
+                                    color: 'var(--dark-300)',
+                                    fontWeight: '600',
+                                }}>
+                                    <span>⏳ Mengimport user...</span>
+                                    <span>{importProgress.current} / {importProgress.total}</span>
+                                </div>
+                                <div style={{
+                                    width: '100%',
+                                    height: '8px',
+                                    background: 'var(--dark-700)',
+                                    borderRadius: 'var(--radius-full)',
+                                    overflow: 'hidden',
+                                }}>
+                                    <div style={{
+                                        width: `${(importProgress.current / importProgress.total) * 100}%`,
+                                        height: '100%',
+                                        background: 'var(--primary-gradient)',
+                                        borderRadius: 'var(--radius-full)',
+                                        transition: 'width 0.3s ease',
+                                    }} />
+                                </div>
+                                <div style={{
+                                    textAlign: 'center',
+                                    fontSize: '10px',
+                                    color: 'var(--dark-400)',
+                                }}>
+                                    {Math.round((importProgress.current / importProgress.total) * 100)}% — diproses 5 user per batch
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Skipped users report */}
+                        {importResult && importResult.skippedCount > 0 && (
+                            <div style={{
+                                background: 'rgba(251, 191, 36, 0.08)',
+                                border: '1px solid rgba(251, 191, 36, 0.25)',
+                                borderRadius: 'var(--radius-md)',
+                                padding: '12px',
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    marginBottom: '8px',
+                                    fontSize: '12px',
+                                    fontWeight: '700',
+                                    color: '#fbbf24',
+                                }}>
+                                    ⚠️ {importResult.skippedCount} user di-skip (sudah terdaftar)
+                                </div>
+                                <div style={{
+                                    maxHeight: '120px',
+                                    overflowY: 'auto',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                }}>
+                                    {importResult.skippedUsers?.map((u, i) => (
+                                        <div key={i} style={{
+                                            fontSize: '11px',
+                                            color: 'var(--dark-300)',
+                                            padding: '4px 8px',
+                                            background: 'rgba(251, 191, 36, 0.05)',
+                                            borderRadius: 'var(--radius-sm)',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                        }}>
+                                            <span style={{ fontWeight: '600' }}>{u.name}</span>
+                                            <span style={{ color: 'var(--dark-500)' }}>{u.email}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Import result summary */}
+                        {importResult && (
+                            <div style={{
+                                background: 'var(--dark-700)',
+                                borderRadius: 'var(--radius-md)',
+                                padding: '10px 12px',
+                                display: 'flex',
+                                gap: '12px',
+                                justifyContent: 'center',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                            }}>
+                                <span style={{ color: '#34d399' }}>✅ {importResult.successCount} berhasil</span>
+                                {importResult.skippedCount > 0 && (
+                                    <span style={{ color: '#fbbf24' }}>⏭️ {importResult.skippedCount} skip</span>
+                                )}
+                                {importResult.failCount > 0 && (
+                                    <span style={{ color: '#f87171' }}>❌ {importResult.failCount} gagal</span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Failed users report */}
+                        {importResult && importResult.errors?.length > 0 && (
+                            <div style={{
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                borderRadius: 'var(--radius-md)',
+                                padding: '12px',
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    marginBottom: '8px',
+                                    fontSize: '12px',
+                                    fontWeight: '700',
+                                    color: '#f87171',
+                                }}>
+                                    ❌ {importResult.errors.length} user gagal diimport
+                                </div>
+                                <div style={{
+                                    maxHeight: '120px',
+                                    overflowY: 'auto',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                }}>
+                                    {importResult.errors.map((err, i) => (
+                                        <div key={i} style={{
+                                            fontSize: '11px',
+                                            color: 'var(--dark-300)',
+                                            padding: '6px 8px',
+                                            background: 'rgba(239, 68, 68, 0.05)',
+                                            borderRadius: 'var(--radius-sm)',
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                                <span style={{ fontWeight: '600' }}>{err.email}</span>
+                                            </div>
+                                            <div style={{ fontSize: '10px', color: '#f87171' }}>
+                                                {err.error}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <button
                             onClick={handleImport}
