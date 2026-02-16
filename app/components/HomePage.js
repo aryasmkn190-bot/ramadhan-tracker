@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import StatsCard from './StatsCard';
 import ActivityCard from './ActivityCard';
@@ -34,9 +34,51 @@ export default function HomePage() {
         addCustomActivityToDay,
         removeCustomActivityFromDay,
         getAddedCustomActivitiesForDay,
+        announcements,
     } = useApp();
 
     const [showActivityPicker, setShowActivityPicker] = useState(false);
+
+    // Announcement Slider State
+    const [announcementIndex, setAnnouncementIndex] = useState(0);
+    const [touchStart, setTouchStart] = useState(null);
+    const [touchEnd, setTouchEnd] = useState(null);
+    const [expandedAnnouncement, setExpandedAnnouncement] = useState(false);
+
+    // Auto-slide announcements
+    useEffect(() => {
+        if (!announcements || announcements.length <= 1) return;
+        const interval = setInterval(() => {
+            setAnnouncementIndex(prev => (prev + 1) % announcements.length);
+            setExpandedAnnouncement(false);
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [announcements]);
+
+    // Swipe handlers for announcements
+    const onAnnouncementTouchStart = (e) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onAnnouncementTouchMove = (e) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const onAnnouncementTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > 50;
+        const isRightSwipe = distance < -50;
+
+        if (isLeftSwipe) {
+            setAnnouncementIndex(prev => (prev + 1) % announcements.length);
+            setExpandedAnnouncement(false);
+        } else if (isRightSwipe) {
+            setAnnouncementIndex(prev => (prev - 1 + announcements.length) % announcements.length);
+            setExpandedAnnouncement(false);
+        }
+    };
 
     const dayActivities = getSelectedDayActivities();
 
@@ -72,6 +114,164 @@ export default function HomePage() {
 
     return (
         <main className="main-content">
+            {/* Announcement Banner Section */}
+            {announcements && announcements.length > 0 && (
+                <section
+                    style={{ marginBottom: '16px' }}
+                    onTouchStart={onAnnouncementTouchStart}
+                    onTouchMove={onAnnouncementTouchMove}
+                    onTouchEnd={onAnnouncementTouchEnd}
+                >
+                    <div style={{
+                        padding: '14px 16px',
+                        background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(245, 158, 11, 0.08))',
+                        borderRadius: 'var(--radius-lg)',
+                        border: '1px solid rgba(251, 191, 36, 0.25)',
+                        backdropFilter: 'blur(8px)',
+                        position: 'relative',
+                        overflow: 'hidden',
+                    }}>
+                        {/* Decorative glow */}
+                        <div style={{
+                            position: 'absolute',
+                            top: '-20px',
+                            right: '-20px',
+                            width: '80px',
+                            height: '80px',
+                            borderRadius: '50%',
+                            background: 'radial-gradient(circle, rgba(251, 191, 36, 0.15), transparent)',
+                            pointerEvents: 'none',
+                        }} />
+
+                        {/* Header row */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: '8px',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                    fontSize: '18px',
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: 'rgba(251, 191, 36, 0.2)',
+                                    borderRadius: 'var(--radius-md)',
+                                }}>📢</span>
+                                <div>
+                                    <div style={{
+                                        fontSize: '13px',
+                                        fontWeight: '700',
+                                        color: 'var(--gold-400)',
+                                        lineHeight: '1.3',
+                                    }}>
+                                        {announcements[announcementIndex].title}
+                                    </div>
+                                    <div style={{
+                                        fontSize: '10px',
+                                        color: 'var(--dark-500)',
+                                        marginTop: '2px',
+                                    }}>
+                                        {new Date(announcements[announcementIndex].created_at).toLocaleDateString('id-ID', {
+                                            day: 'numeric',
+                                            month: 'short',
+                                            year: 'numeric',
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {announcements.length > 1 && (
+                                <span style={{
+                                    fontSize: '10px',
+                                    color: 'var(--dark-400)',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    padding: '3px 8px',
+                                    borderRadius: 'var(--radius-full)',
+                                    fontWeight: '600',
+                                }}>
+                                    {announcementIndex + 1}/{announcements.length}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Content */}
+                        <p
+                            onClick={() => {
+                                if (announcements[announcementIndex].content.length > 120) {
+                                    setExpandedAnnouncement(!expandedAnnouncement);
+                                }
+                            }}
+                            style={{
+                                fontSize: '12px',
+                                color: 'var(--dark-200)',
+                                lineHeight: '1.6',
+                                margin: 0,
+                                cursor: announcements[announcementIndex].content.length > 120 ? 'pointer' : 'default',
+                                whiteSpace: 'pre-wrap',
+                            }}
+                        >
+                            {expandedAnnouncement
+                                ? announcements[announcementIndex].content
+                                : (announcements[announcementIndex].content.length > 120
+                                    ? announcements[announcementIndex].content.substring(0, 120) + '...'
+                                    : announcements[announcementIndex].content
+                                )
+                            }
+                        </p>
+
+                        {announcements[announcementIndex].content.length > 120 && (
+                            <button
+                                onClick={() => setExpandedAnnouncement(!expandedAnnouncement)}
+                                style={{
+                                    marginTop: '6px',
+                                    fontSize: '11px',
+                                    color: 'var(--gold-400)',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    padding: 0,
+                                }}
+                            >
+                                {expandedAnnouncement ? 'Sembunyikan ▲' : 'Selengkapnya ▼'}
+                            </button>
+                        )}
+
+                        {/* Dots Indicator */}
+                        {announcements.length > 1 && (
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                gap: '5px',
+                                marginTop: '10px',
+                            }}>
+                                {announcements.map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        onClick={() => {
+                                            setAnnouncementIndex(idx);
+                                            setExpandedAnnouncement(false);
+                                        }}
+                                        style={{
+                                            width: idx === announcementIndex ? '18px' : '6px',
+                                            height: '6px',
+                                            borderRadius: '3px',
+                                            background: idx === announcementIndex ? 'var(--gold-400)' : 'var(--dark-600)',
+                                            transition: 'all 0.3s ease',
+                                            cursor: 'pointer',
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
             {/* Day Selector (1-30 Ramadhan) */}
             <DaySelector />
 

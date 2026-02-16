@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { USER_GROUPS } from '../data/userGroups';
 
 export default function Header() {
-    const { currentRamadanDay, announcements, addToast } = useApp();
+    const { currentRamadanDay, addToast } = useApp();
     const { user, profile, signOut, updateProfile, updatePassword } = useAuth();
 
     // Digital clock state (WIB = UTC+7)
@@ -29,44 +29,7 @@ export default function Header() {
     const [showConfirmPwd, setShowConfirmPwd] = useState(false);
     const [savingPassword, setSavingPassword] = useState(false);
 
-    // Announcement Slider
-    const [announcementIndex, setAnnouncementIndex] = useState(0);
-    const [touchStart, setTouchStart] = useState(null);
-    const [touchEnd, setTouchEnd] = useState(null);
 
-    // Auto-slide announcements
-    useEffect(() => {
-        if (!announcements || announcements.length <= 1) return;
-        const interval = setInterval(() => {
-            setAnnouncementIndex(prev => (prev + 1) % announcements.length);
-        }, 10000);
-        return () => clearInterval(interval);
-    }, [announcements]);
-
-    // Swipe handlers
-    const onTouchStart = (e) => {
-        setTouchEnd(null);
-        setTouchStart(e.targetTouches[0].clientX);
-    };
-
-    const onTouchMove = (e) => {
-        setTouchEnd(e.targetTouches[0].clientX);
-    };
-
-    const onTouchEnd = () => {
-        if (!touchStart || !touchEnd) return;
-        const distance = touchStart - touchEnd;
-        const isLeftSwipe = distance > 50;
-        const isRightSwipe = distance < -50;
-
-        if (isLeftSwipe) {
-            // Next
-            setAnnouncementIndex(prev => (prev + 1) % announcements.length);
-        } else if (isRightSwipe) {
-            // Prev
-            setAnnouncementIndex(prev => (prev - 1 + announcements.length) % announcements.length);
-        }
-    };
 
     useEffect(() => {
         const updateClock = () => {
@@ -436,81 +399,7 @@ export default function Header() {
                     }}>{headerSubtitle}</span>
                 </div>
 
-                {/* Announcement Banner Slider */}
-                {announcements && announcements.length > 0 && (
-                    <div
-                        onTouchStart={onTouchStart}
-                        onTouchMove={onTouchMove}
-                        onTouchEnd={onTouchEnd}
-                        style={{
-                            marginTop: '12px',
-                            minHeight: '80px', // Prevent layout shift
-                            position: 'relative',
-                        }}
-                    >
-                        <div style={{
-                            padding: '10px 14px',
-                            background: 'rgba(251, 191, 36, 0.15)',
-                            borderRadius: 'var(--radius-md)',
-                            border: '1px solid rgba(251, 191, 36, 0.3)',
-                            transition: 'opacity 0.3s ease',
-                        }}>
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                fontSize: '12px',
-                                justifyContent: 'space-between',
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>📢</span>
-                                    <span style={{ color: 'var(--gold-400)', fontWeight: '600' }}>
-                                        {announcements[announcementIndex].title}
-                                    </span>
-                                </div>
-                                {announcements.length > 1 && (
-                                    <span style={{ fontSize: '10px', color: 'var(--dark-400)' }}>
-                                        {announcementIndex + 1}/{announcements.length}
-                                    </span>
-                                )}
-                            </div>
-                            <p style={{
-                                fontSize: '11px',
-                                color: 'var(--dark-200)',
-                                marginTop: '4px',
-                                lineHeight: '1.5',
-                            }}>
-                                {announcements[announcementIndex].content.length > 80
-                                    ? announcements[announcementIndex].content.substring(0, 80) + '...'
-                                    : announcements[announcementIndex].content
-                                }
-                            </p>
-                        </div>
 
-                        {/* Dots Indicator */}
-                        {announcements.length > 1 && (
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'center',
-                                gap: '4px',
-                                marginTop: '6px',
-                            }}>
-                                {announcements.map((_, idx) => (
-                                    <div
-                                        key={idx}
-                                        style={{
-                                            width: '6px',
-                                            height: '6px',
-                                            borderRadius: '50%',
-                                            background: idx === announcementIndex ? 'var(--gold-400)' : 'var(--dark-600)',
-                                            transition: 'background 0.3s ease',
-                                        }}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
             </header>
 
             {/* Edit Profile Modal */}
