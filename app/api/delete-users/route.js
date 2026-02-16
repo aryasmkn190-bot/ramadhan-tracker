@@ -2,16 +2,20 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 // Server-side Supabase client with service_role key
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-        },
-    }
-);
+// Server-side Supabase client with service_role key
+// Initialize lazily or check for key to prevent build errors
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+            },
+        }
+    )
+    : null;
 
 // Anon client for session verification
 const supabaseAnon = createClient(
@@ -69,6 +73,11 @@ export async function POST(request) {
 
         if (!profile || profile.role !== 'admin') {
             return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+        }
+
+        if (!supabaseAdmin) {
+            console.error('SUPABASE_SERVICE_ROLE_KEY is not set');
+            return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
         }
 
         // 2. Parse request body

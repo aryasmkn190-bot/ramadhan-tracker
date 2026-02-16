@@ -2,16 +2,20 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 // Server-side Supabase client with service_role key (full admin access)
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-        },
-    }
-);
+// Server-side Supabase client with service_role key (full admin access)
+// Initialize lazily or check for key to prevent build errors
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+            },
+        }
+    )
+    : null;
 
 // Anon client for session verification only
 const supabaseAnon = createClient(
@@ -85,6 +89,13 @@ export async function POST(request) {
 
         if (!profile || profile.role !== 'admin') {
             return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+        }
+
+        if (!supabaseAdmin) {
+            return NextResponse.json({
+                error: 'SUPABASE_SERVICE_ROLE_KEY belum dikonfigurasi. Tambahkan di .env.local',
+                fallback: true,
+            }, { status: 500 });
         }
 
         // 2. Check if service_role key is configured
