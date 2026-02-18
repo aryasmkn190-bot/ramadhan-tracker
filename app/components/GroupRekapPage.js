@@ -45,7 +45,12 @@ export default function GroupRekapPage() {
 
     const fetchGroupData = async () => {
         if (!isSupabaseConfigured() || !userGroup) return;
+
+        // Clear old data immediately to prevent stale data flash
         setLoading(true);
+        setProfiles([]);
+        setAllActivities([]);
+        setQuranData([]);
 
         try {
             // Fetch custom activities (for amanah identification)
@@ -59,7 +64,6 @@ export default function GroupRekapPage() {
                 .eq('user_group', userGroup);
 
             const groupProfiles = profilesRes.data || [];
-            setProfiles(groupProfiles);
 
             // Step 2: Fetch only activities & quran data for group members (server-side filter)
             const memberIds = groupProfiles.map(p => p.id);
@@ -74,9 +78,12 @@ export default function GroupRekapPage() {
                         .in('user_id', memberIds),
                 ]);
 
+                // Set all data at once to avoid partial renders
+                setProfiles(groupProfiles);
                 if (activitiesRes.data) setAllActivities(activitiesRes.data);
                 if (quranRes.data) setQuranData(quranRes.data);
             } else {
+                setProfiles(groupProfiles);
                 setAllActivities([]);
                 setQuranData([]);
             }

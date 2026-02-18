@@ -145,12 +145,14 @@ export function AppProvider({ children }) {
             loadAllData(isMounted);
         } else {
             // Reset state when logged out
+            // Keep isLoading = true so that when user logs in, the loading spinner
+            // is shown until data is fully fetched. page.js shows AuthPage when !user
+            // regardless of isLoading, so this has no side effects.
             setActivities({});
             setQuranReadings([]);
             setLeaderboard([]);
             setCommunityStats(null);
             setAnnouncements([]);
-            setIsLoading(false);
         }
 
         return () => {
@@ -163,10 +165,11 @@ export function AppProvider({ children }) {
         setIsLoading(true);
 
         try {
-            // ESSENTIAL: Load user activities and quran readings
-            const [activitiesResult, quranResult] = await Promise.all([
+            // ESSENTIAL: Load user activities, quran readings, AND custom activities in parallel
+            const [activitiesResult, quranResult, customResult] = await Promise.all([
                 supabase.from('daily_activities').select('*').eq('user_id', user.id),
                 supabase.from('quran_readings').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+                supabase.from('custom_activities').select('*').eq('is_active', true).order('category', { ascending: true }),
             ]);
 
             if (!isMounted) return;
@@ -201,6 +204,26 @@ export function AppProvider({ children }) {
                     startAyat: r.start_ayat,
                     endAyat: r.end_ayat,
                 })));
+            }
+
+            // Process custom activities (essential for rekap page totals)
+            if (customResult.data && customResult.data.length > 0) {
+                const userGroup = profile?.user_group;
+                const filteredCustom = customResult.data.filter(item => {
+                    if (!item.target_groups || item.target_groups.length === 0) return true;
+                    if (userGroup && item.target_groups.includes(userGroup)) return true;
+                    return false;
+                });
+
+                const formatted = filteredCustom.map(item => ({
+                    id: `custom_${item.id}`,
+                    name: item.name,
+                    icon: item.icon || '📌',
+                    category: item.category,
+                    description: item.description,
+                    isCustom: true,
+                }));
+                setCustomActivities(formatted);
             }
 
         } catch (error) {
@@ -276,30 +299,22 @@ export function AppProvider({ children }) {
                 { id: 'lainnya', label: 'Lainnya', icon: '📌', sort_order: 7 },
             ]);
         }
+    };
 
-        // Load custom activities from admin
+    // Refresh custom activities (called when admin updates custom activities)
+    const refreshCustomActivities = async () => {
         try {
-            const { data: customData, error: customError } = await supabase
+            const { data: customData } = await supabase
                 .from('custom_activities')
                 .select('*')
                 .eq('is_active', true)
                 .order('category', { ascending: true });
 
-            console.log('Custom activities fetch result:', { customData, customError });
-
-            if (customError) {
-                console.error('Error fetching custom activities:', customError);
-            }
-
             if (customData && customData.length > 0) {
-                // Filter by user's group
                 const userGroup = profile?.user_group;
                 const filteredCustom = customData.filter(item => {
-                    // If target_groups is null or empty, show to everyone
                     if (!item.target_groups || item.target_groups.length === 0) return true;
-                    // If user has a group, check if it matches
                     if (userGroup && item.target_groups.includes(userGroup)) return true;
-                    // If user has no group, only show activities with no target
                     return false;
                 });
 
@@ -311,11 +326,10 @@ export function AppProvider({ children }) {
                     description: item.description,
                     isCustom: true,
                 }));
-                console.log('Formatted custom activities:', formatted);
                 setCustomActivities(formatted);
             }
         } catch (e) {
-            console.error('Custom activities error:', e);
+            console.error('Custom activities refresh error:', e);
         }
     };
 

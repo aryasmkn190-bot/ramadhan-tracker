@@ -90,7 +90,16 @@ export default function RekapPage() {
                 return sum + (d?.completed ? getSessionCount(d) : 0);
             }, 0);
 
+            // total uses session count (for "Total Selesai" display)
             const total = prayersCompleted + sunnahCompleted + activitiesCompleted + customCompleted;
+
+            // completionCount caps each activity at 1 (for percentage calculation)
+            // This prevents multi-session activities from inflating the percentage beyond 100%
+            const completionCount =
+                DEFAULT_PRAYERS.filter(p => dayActs[p.id]?.completed).length +
+                DEFAULT_SUNNAH.filter(s => dayActs[s.id]?.completed).length +
+                DEFAULT_ACTIVITIES.filter(a => dayActs[a.id]?.completed).length +
+                addedCustomForDay.filter(c => dayActs[c.id]?.completed).length;
 
             // maxTotal = defaults + added customs for this specific day
             const maxTotal = DEFAULT_PRAYERS.length + DEFAULT_SUNNAH.length + DEFAULT_ACTIVITIES.length + addedCustomForDay.length;
@@ -98,15 +107,15 @@ export default function RekapPage() {
             // Check if there's tadarus/quran reading progress for this day
             const hasTadarus = quranReadings.some(r => r.readDate === dateStr);
 
-            // Calculate percentage: if all activities done + has tadarus → 100%
+            // Calculate percentage using completionCount (1 per activity, not session count)
             let percentage;
-            if (maxTotal > 0 && total >= maxTotal && hasTadarus) {
+            if (maxTotal > 0 && completionCount >= maxTotal && hasTadarus) {
                 percentage = 100;
             } else if (maxTotal > 0) {
                 // Include tadarus as part of the ratio (adds 1 to both numerator and denominator)
-                const adjustedTotal = total + (hasTadarus ? 1 : 0);
+                const adjustedTotal = completionCount + (hasTadarus ? 1 : 0);
                 const adjustedMax = maxTotal + 1; // +1 for tadarus slot
-                percentage = Math.round((adjustedTotal / adjustedMax) * 100);
+                percentage = Math.min(Math.round((adjustedTotal / adjustedMax) * 100), 100);
             } else {
                 percentage = hasTadarus ? 100 : 0;
             }
@@ -119,6 +128,7 @@ export default function RekapPage() {
                 aktivitas: activitiesCompleted,
                 custom: customCompleted,
                 total,
+                completionCount,
                 maxTotal,
                 hasTadarus,
                 percentage,
@@ -218,11 +228,11 @@ export default function RekapPage() {
 
     // Statistics
     const stats = useMemo(() => {
-        // Sum up per-day maxTotal (adjusted with tadarus) instead of using a flat multiplier
-        const totalCompleted = dailyData.reduce((sum, d) => sum + d.total + (d.hasTadarus ? 1 : 0), 0);
+        // Use completionCount (1 per activity) for completion rate, not session-based total
+        const totalCompleted = dailyData.reduce((sum, d) => sum + d.completionCount + (d.hasTadarus ? 1 : 0), 0);
         const totalPossible = dailyData.reduce((sum, d) => sum + d.maxTotal + 1, 0); // +1 per day for tadarus
         const avgPerDay = daysToInclude.length > 0 ? Math.round(dailyData.reduce((sum, d) => sum + d.total, 0) / daysToInclude.length * 10) / 10 : 0;
-        const completionRate = totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0;
+        const completionRate = totalPossible > 0 ? Math.min(Math.round((totalCompleted / totalPossible) * 100), 100) : 0;
         const bestDay = dailyData.reduce((best, d) => d.total > best.total ? d : best, { total: 0, dayNum: 0 });
 
         return {
