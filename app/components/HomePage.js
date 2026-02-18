@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import StatsCard from './StatsCard';
 import ActivityCard from './ActivityCard';
@@ -10,16 +10,6 @@ import JadwalShalatCard from './JadwalShalatCard';
 import DoaCard from './DoaCard';
 import AyatHarianCard from './AyatHarianCard';
 
-// Category labels and icons for custom activities
-const CATEGORY_INFO = {
-    amanah: { label: 'Amanah', icon: '🎯' },
-    istirahat: { label: 'Istirahat', icon: '😴' },
-    produktifitas: { label: 'Produktifitas', icon: '💼' },
-    sosial: { label: 'Sosial', icon: '🤝' },
-    kesehatan: { label: 'Kesehatan', icon: '🏃' },
-    pendidikan: { label: 'Pendidikan', icon: '📚' },
-    lainnya: { label: 'Lainnya', icon: '📌' },
-};
 
 export default function HomePage() {
     const {
@@ -35,9 +25,40 @@ export default function HomePage() {
         removeCustomActivityFromDay,
         getAddedCustomActivitiesForDay,
         announcements,
+        activityCategories,
     } = useApp();
 
+    // Build CATEGORY_INFO map from dynamic categories
+    const CATEGORY_INFO = useMemo(() => {
+        const map = {};
+        activityCategories.forEach(cat => {
+            map[cat.id] = { label: cat.label, icon: cat.icon };
+        });
+        // Always ensure 'lainnya' exists as fallback
+        if (!map.lainnya) map.lainnya = { label: 'Lainnya', icon: '📌' };
+        return map;
+    }, [activityCategories]);
+
     const [showActivityPicker, setShowActivityPicker] = useState(false);
+
+    // Collapsible sections state — persisted to localStorage
+    const [collapsedSections, setCollapsedSections] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('collapsedSections');
+                return saved ? JSON.parse(saved) : {};
+            } catch { return {}; }
+        }
+        return {};
+    });
+
+    const toggleSection = (sectionId) => {
+        setCollapsedSections(prev => {
+            const next = { ...prev, [sectionId]: !prev[sectionId] };
+            try { localStorage.setItem('collapsedSections', JSON.stringify(next)); } catch { }
+            return next;
+        });
+    };
 
     // Announcement Slider State
     const [announcementIndex, setAnnouncementIndex] = useState(0);
@@ -287,104 +308,125 @@ export default function HomePage() {
 
             {/* Sholat Wajib */}
             <section className="section">
-                <div className="section-header">
+                <div className="section-header" onClick={() => toggleSection('prayers')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <h2 className="section-title">
                         <span>🕌</span>
                         Sholat Wajib
                     </h2>
-                    <span className="section-action">
-                        {prayers.filter(p => p.completed).length}/{prayers.length}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="section-action">
+                            {prayers.filter(p => p.completed).length}/{prayers.length}
+                        </span>
+                        <span style={{ fontSize: '12px', color: 'var(--dark-400)', transition: 'transform 0.2s ease', transform: collapsedSections.prayers ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                    </div>
                 </div>
-                {prayers.map(prayer => (
-                    <ActivityCard key={prayer.id} activity={prayer} />
-                ))}
+                <div style={{ overflow: 'hidden', maxHeight: collapsedSections.prayers ? '0px' : '2000px', opacity: collapsedSections.prayers ? 0 : 1, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+                    {prayers.map(prayer => (
+                        <ActivityCard key={prayer.id} activity={prayer} />
+                    ))}
+                </div>
             </section>
 
             {/* Sholat Sunnah */}
             <section className="section">
-                <div className="section-header">
+                <div className="section-header" onClick={() => toggleSection('sunnah')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <h2 className="section-title">
                         <span>⭐</span>
                         Sholat Sunnah
                     </h2>
-                    <span className="section-action">
-                        {sunnah.filter(s => s.completed).length}/{sunnah.length}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="section-action">
+                            {sunnah.filter(s => s.completed).length}/{sunnah.length}
+                        </span>
+                        <span style={{ fontSize: '12px', color: 'var(--dark-400)', transition: 'transform 0.2s ease', transform: collapsedSections.sunnah ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                    </div>
                 </div>
-                {sunnah.map(s => (
-                    <ActivityCard key={s.id} activity={s} />
-                ))}
+                <div style={{ overflow: 'hidden', maxHeight: collapsedSections.sunnah ? '0px' : '2000px', opacity: collapsedSections.sunnah ? 0 : 1, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+                    {sunnah.map(s => (
+                        <ActivityCard key={s.id} activity={s} />
+                    ))}
+                </div>
             </section>
 
             {/* Aktivitas Ramadhan */}
             <section className="section">
-                <div className="section-header">
+                <div className="section-header" onClick={() => toggleSection('ramadhan')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <h2 className="section-title">
                         <span>☪️</span>
                         Aktivitas Ramadhan
                     </h2>
-                    <span className="section-action">
-                        {activities.filter(a => a.completed).length}/{activities.length}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="section-action">
+                            {activities.filter(a => a.completed).length}/{activities.length}
+                        </span>
+                        <span style={{ fontSize: '12px', color: 'var(--dark-400)', transition: 'transform 0.2s ease', transform: collapsedSections.ramadhan ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                    </div>
                 </div>
-                {activities.map(activity => (
-                    <ActivityCard key={activity.id} activity={activity} />
-                ))}
+                <div style={{ overflow: 'hidden', maxHeight: collapsedSections.ramadhan ? '0px' : '2000px', opacity: collapsedSections.ramadhan ? 0 : 1, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+                    {activities.map(activity => (
+                        <ActivityCard key={activity.id} activity={activity} />
+                    ))}
+                </div>
             </section>
 
-            {/* Amanah Section — separate from other custom activities */}
+            {/* Tugas Section — separate from other custom activities */}
             {customByCategory['amanah'] && customByCategory['amanah'].length > 0 && (
                 <section className="section">
-                    <div className="section-header">
+                    <div className="section-header" onClick={() => toggleSection('tugas')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <h2 className="section-title">
                             <span>🎯</span>
-                            Amanah
+                            Tugas
                         </h2>
-                        <span className="section-action">
-                            {customByCategory['amanah'].filter(a => a.completed).length}/{customByCategory['amanah'].length}
-                        </span>
-                    </div>
-                    {customByCategory['amanah'].map(activity => (
-                        <div key={activity.id} style={{ position: 'relative' }}>
-                            <ActivityCard activity={activity} />
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeCustomActivityFromDay(activity.id);
-                                }}
-                                style={{
-                                    position: 'absolute',
-                                    top: '50%',
-                                    right: '48px',
-                                    transform: 'translateY(-50%)',
-                                    width: '28px',
-                                    height: '28px',
-                                    background: 'rgba(239, 68, 68, 0.15)',
-                                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                                    borderRadius: 'var(--radius-full)',
-                                    color: '#f87171',
-                                    fontSize: '12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                }}
-                                title="Hapus dari hari ini"
-                            >
-                                ✕
-                            </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="section-action">
+                                {customByCategory['amanah'].filter(a => a.completed).length}/{customByCategory['amanah'].length}
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'var(--dark-400)', transition: 'transform 0.2s ease', transform: collapsedSections.tugas ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
                         </div>
-                    ))}
+                    </div>
+                    <div style={{ overflow: 'hidden', maxHeight: collapsedSections.tugas ? '0px' : '2000px', opacity: collapsedSections.tugas ? 0 : 1, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+                        {customByCategory['amanah'].map(activity => (
+                            <div key={activity.id} style={{ position: 'relative' }}>
+                                <ActivityCard activity={activity} />
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeCustomActivityFromDay(activity.id);
+                                    }}
+                                    style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        right: '48px',
+                                        transform: 'translateY(-50%)',
+                                        width: '28px',
+                                        height: '28px',
+                                        background: 'rgba(239, 68, 68, 0.15)',
+                                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                                        borderRadius: 'var(--radius-full)',
+                                        color: '#f87171',
+                                        fontSize: '12px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}
+                                    title="Hapus dari hari ini"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </section>
             )}
 
             {/* Custom Activities Section (non-amanah) */}
             <section className="section">
-                <div className="section-header">
-                    <h2 className="section-title">
+                <div className="section-header" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    <h2 className="section-title" onClick={() => toggleSection('custom')} style={{ cursor: 'pointer' }}>
                         <span>📋</span>
                         Aktivitas Lainnya
+                        <span style={{ fontSize: '12px', color: 'var(--dark-400)', transition: 'transform 0.2s ease', transform: collapsedSections.custom ? 'rotate(-90deg)' : 'rotate(0deg)', marginLeft: '4px' }}>▼</span>
                     </h2>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         {addedCustomActivities.filter(a => a.category !== 'amanah').length > 0 && (
@@ -394,7 +436,7 @@ export default function HomePage() {
                         )}
                         {hasAvailableActivities && (
                             <button
-                                onClick={() => setShowActivityPicker(true)}
+                                onClick={(e) => { e.stopPropagation(); setShowActivityPicker(true); }}
                                 style={{
                                     padding: '6px 14px',
                                     background: 'var(--primary-gradient)',
@@ -417,78 +459,80 @@ export default function HomePage() {
                 </div>
 
                 {/* Added custom activities list (non-amanah only) */}
-                {(() => {
-                    const nonAmanahCategories = Object.entries(customByCategory).filter(([cat]) => cat !== 'amanah');
-                    return nonAmanahCategories.length > 0 ? (
-                        nonAmanahCategories.map(([category, catActivities]) => {
-                            const categoryInfo = CATEGORY_INFO[category] || CATEGORY_INFO.lainnya;
-                            return (
-                                <div key={category} style={{ marginBottom: '8px' }}>
-                                    <div style={{
-                                        fontSize: '11px',
-                                        color: 'var(--dark-500)',
-                                        marginBottom: '6px',
-                                        marginLeft: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                    }}>
-                                        <span>{categoryInfo.icon}</span>
-                                        <span>{categoryInfo.label}</span>
-                                    </div>
-                                    {catActivities.map(activity => (
-                                        <div key={activity.id} style={{ position: 'relative' }}>
-                                            <ActivityCard activity={activity} />
-                                            {/* Delete button */}
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    removeCustomActivityFromDay(activity.id);
-                                                }}
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: '50%',
-                                                    right: '48px',
-                                                    transform: 'translateY(-50%)',
-                                                    width: '28px',
-                                                    height: '28px',
-                                                    background: 'rgba(239, 68, 68, 0.15)',
-                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                                                    borderRadius: 'var(--radius-full)',
-                                                    color: '#f87171',
-                                                    fontSize: '12px',
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                }}
-                                                title="Hapus dari hari ini"
-                                            >
-                                                ✕
-                                            </button>
+                <div style={{ overflow: 'hidden', maxHeight: collapsedSections.custom ? '0px' : '5000px', opacity: collapsedSections.custom ? 0 : 1, transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+                    {(() => {
+                        const nonAmanahCategories = Object.entries(customByCategory).filter(([cat]) => cat !== 'amanah');
+                        return nonAmanahCategories.length > 0 ? (
+                            nonAmanahCategories.map(([category, catActivities]) => {
+                                const categoryInfo = CATEGORY_INFO[category] || CATEGORY_INFO.lainnya;
+                                return (
+                                    <div key={category} style={{ marginBottom: '8px' }}>
+                                        <div style={{
+                                            fontSize: '11px',
+                                            color: 'var(--dark-500)',
+                                            marginBottom: '6px',
+                                            marginLeft: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                        }}>
+                                            <span>{categoryInfo.icon}</span>
+                                            <span>{categoryInfo.label}</span>
                                         </div>
-                                    ))}
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <div style={{
-                            padding: '24px',
-                            textAlign: 'center',
-                            color: 'var(--dark-500)',
-                            fontSize: '13px',
-                            background: 'var(--dark-800)',
-                            borderRadius: 'var(--radius-lg)',
-                        }}>
-                            <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
-                            {hasAvailableActivities ? (
-                                <p>Klik <strong>"+ Tambahkan"</strong> untuk menambahkan aktivitas ke hari ini</p>
-                            ) : (
-                                <p>Belum ada aktivitas custom dari admin</p>
-                            )}
-                        </div>
-                    );
-                })()}
+                                        {catActivities.map(activity => (
+                                            <div key={activity.id} style={{ position: 'relative' }}>
+                                                <ActivityCard activity={activity} />
+                                                {/* Delete button */}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        removeCustomActivityFromDay(activity.id);
+                                                    }}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        top: '50%',
+                                                        right: '48px',
+                                                        transform: 'translateY(-50%)',
+                                                        width: '28px',
+                                                        height: '28px',
+                                                        background: 'rgba(239, 68, 68, 0.15)',
+                                                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                        borderRadius: 'var(--radius-full)',
+                                                        color: '#f87171',
+                                                        fontSize: '12px',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                    }}
+                                                    title="Hapus dari hari ini"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div style={{
+                                padding: '24px',
+                                textAlign: 'center',
+                                color: 'var(--dark-500)',
+                                fontSize: '13px',
+                                background: 'var(--dark-800)',
+                                borderRadius: 'var(--radius-lg)',
+                            }}>
+                                <div style={{ fontSize: '28px', marginBottom: '8px' }}>📋</div>
+                                {hasAvailableActivities ? (
+                                    <p>Klik <strong>"+ Tambahkan"</strong> untuk menambahkan aktivitas ke hari ini</p>
+                                ) : (
+                                    <p>Belum ada aktivitas custom dari admin</p>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </div>
             </section>
 
             {/* Spillover Activities (overnight from previous day) */}

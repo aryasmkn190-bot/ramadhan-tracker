@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { getSessionCount } from '../utils/activityHelpers';
 import QURAN_SURAHS, { TOTAL_AYAT } from '../data/quranSurahs';
 
 const AppContext = createContext();
@@ -78,6 +79,7 @@ export function AppProvider({ children }) {
     const [communityStats, setCommunityStats] = useState(null);
     const [announcements, setAnnouncements] = useState([]);
     const [customActivities, setCustomActivities] = useState([]);
+    const [activityCategories, setActivityCategories] = useState([]);
 
     // Valid pages for persistence
     const VALID_PAGES = ['home', 'quran', 'rekap', 'leaderboard', 'settings', 'admin', 'admin_dashboard', 'admin_members', 'admin_activities', 'admin_announcements'];
@@ -241,6 +243,39 @@ export function AppProvider({ children }) {
                 .limit(5);
             if (announcementsData) setAnnouncements(announcementsData);
         } catch (e) { /* Announcements not available */ }
+
+        // Load activity categories
+        try {
+            const { data: catData } = await supabase
+                .from('activity_categories')
+                .select('*')
+                .order('sort_order', { ascending: true });
+            if (catData && catData.length > 0) {
+                setActivityCategories(catData);
+            } else {
+                // Fallback defaults
+                setActivityCategories([
+                    { id: 'amanah', label: 'Tugas', icon: '🎯', sort_order: 1 },
+                    { id: 'istirahat', label: 'Istirahat', icon: '😴', sort_order: 2 },
+                    { id: 'produktifitas', label: 'Produktifitas', icon: '💼', sort_order: 3 },
+                    { id: 'sosial', label: 'Sosial', icon: '🤝', sort_order: 4 },
+                    { id: 'kesehatan', label: 'Kesehatan', icon: '🏃', sort_order: 5 },
+                    { id: 'pendidikan', label: 'Pendidikan', icon: '📚', sort_order: 6 },
+                    { id: 'lainnya', label: 'Lainnya', icon: '📌', sort_order: 7 },
+                ]);
+            }
+        } catch (e) {
+            // Fallback defaults
+            setActivityCategories([
+                { id: 'amanah', label: 'Tugas', icon: '🎯', sort_order: 1 },
+                { id: 'istirahat', label: 'Istirahat', icon: '😴', sort_order: 2 },
+                { id: 'produktifitas', label: 'Produktifitas', icon: '💼', sort_order: 3 },
+                { id: 'sosial', label: 'Sosial', icon: '🤝', sort_order: 4 },
+                { id: 'kesehatan', label: 'Kesehatan', icon: '🏃', sort_order: 5 },
+                { id: 'pendidikan', label: 'Pendidikan', icon: '📚', sort_order: 6 },
+                { id: 'lainnya', label: 'Lainnya', icon: '📌', sort_order: 7 },
+            ]);
+        }
 
         // Load custom activities from admin
         try {
@@ -420,13 +455,22 @@ export function AppProvider({ children }) {
                 // Find original activity for icon/category
                 const allDefault = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
                 const original = allDefault.find(a => a.id === originalId);
+                // Get notes: from spillover data, or fallback to previous day's original activity
+                let spillNotes = data.notes || '';
+                if (!spillNotes) {
+                    const prevDate = new Date(selectedDateString + 'T12:00:00');
+                    prevDate.setDate(prevDate.getDate() - 1);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    spillNotes = activities[prevDateStr]?.[originalId]?.notes || '';
+                }
+                const notesLabel = '';
                 result.push({
                     id: key,
                     name: `${original?.name || originalId} (lanjutan)`,
                     icon: original?.icon || '🔄',
                     category: original?.category || 'other',
                     completed: true,
-                    timeData: data,
+                    timeData: { ...data, notes: spillNotes || data.notes || null },
                     isSpillover: true,
                 });
             }
@@ -522,7 +566,7 @@ export function AppProvider({ children }) {
                 if (error) throw error;
 
                 // === OVERNIGHT SPILLOVER ===
-                await handleOvernightSpillover(activityId, activity, startTime, endTime, selectedDateString);
+                await handleOvernightSpillover(activityId, activity, startTime, endTime, selectedDateString, notes);
             } else if (isCustom) {
                 // Custom activity: update to uncompleted but keep the row (added=true)
                 const { error } = await supabase
@@ -597,7 +641,7 @@ export function AppProvider({ children }) {
 
     // === Handle Overnight Spillover ===
     // Detects sessions that cross midnight and auto-creates next-day entries
-    const handleOvernightSpillover = useCallback(async (activityId, activity, startTime, endTime, dateString) => {
+    const handleOvernightSpillover = useCallback(async (activityId, activity, startTime, endTime, dateString, notes = null) => {
         if (!user) return;
         const nextDate = getNextDateString(dateString);
         const spilloverId = `${activityId}__spillover`;
@@ -656,6 +700,7 @@ export function AppProvider({ children }) {
                     endTime: spillEndTime,
                     completedAt: new Date().toISOString(),
                     spillover: true,
+                    notes: notes || null,
                 },
             },
         }));
@@ -673,6 +718,7 @@ export function AppProvider({ children }) {
                 completed_at: new Date().toISOString(),
                 start_time: spillStartTime,
                 end_time: spillEndTime,
+                notes: notes || null,
             }, {
                 onConflict: 'user_id,activity_date,activity_id',
             });
@@ -718,7 +764,7 @@ export function AppProvider({ children }) {
             if (error) throw error;
 
             // === OVERNIGHT SPILLOVER ===
-            await handleOvernightSpillover(activityId, activity, startTime, endTime, selectedDateString);
+            await handleOvernightSpillover(activityId, activity, startTime, endTime, selectedDateString, notes);
 
             // Format toast
             let timeInfo = '';
@@ -970,26 +1016,35 @@ export function AppProvider({ children }) {
     // Calculate stats
     const getStats = useCallback(() => {
         const dayActivities = getSelectedDayActivities();
-        const completedDay = dayActivities.filter(a => a.completed).length;
+        // Count sessions per completed activity for today
+        // Note: dayActivities items have time data nested in .timeData (not at top level)
+        let completedDay = 0;
+        dayActivities.forEach(a => {
+            if (a.completed) {
+                completedDay += getSessionCount(a.timeData);
+            }
+        });
         const totalActivities = dayActivities.length;
 
         let totalCompleted = 0;
         Object.values(activities).forEach(dayData => {
-            totalCompleted += Object.values(dayData).filter(a => a?.completed).length;
+            Object.values(dayData).forEach(a => {
+                if (a?.completed) {
+                    totalCompleted += getSessionCount(a);
+                }
+            });
         });
 
-        // Calculate streak
-        let streak = 0;
-        for (let day = currentRamadanDay; day >= 1; day--) {
-            const dateStr = getDateForRamadanDay(day);
-            const dayData = activities[dateStr] || {};
-            const wajibCompleted = DEFAULT_PRAYERS.every(p => dayData[p.id]?.completed);
-            if (wajibCompleted) {
-                streak++;
-            } else {
-                break;
-            }
-        }
+        // Calculate total completed tugas (amanah category) activities
+        const amanahIds = new Set(customActivities.filter(ca => ca.category === 'amanah').map(ca => ca.id));
+        let totalTugas = 0;
+        Object.values(activities).forEach(dayData => {
+            Object.entries(dayData).forEach(([actId, data]) => {
+                if (data?.completed && amanahIds.has(actId)) {
+                    totalTugas += getSessionCount(data);
+                }
+            });
+        });
 
         // Check if there's tadarus progress for the selected day
         const hasTadarus = quranReadings.some(r => r.readDate === selectedDateString);
@@ -1015,9 +1070,9 @@ export function AppProvider({ children }) {
             selectedDay: selectedRamadanDay,
             quranTotalRead: quranGlobalProgress.totalRead,
             quranPercentage: quranGlobalProgress.percentage,
-            streak,
+            totalTugas,
         };
-    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, selectedDateString, quranReadings, quranGlobalProgress]);
+    }, [getSelectedDayActivities, activities, currentRamadanDay, selectedRamadanDay, selectedDateString, quranReadings, quranGlobalProgress, customActivities]);
 
     // Toast management
     const addToast = useCallback((message, type = 'success') => {
@@ -1042,7 +1097,9 @@ export function AppProvider({ children }) {
                 day,
                 activities: allActivities.filter(a => dayData[a.id]?.completed).map(a => a.name),
                 missed: allActivities.filter(a => !dayData[a.id]?.completed && a.category === 'wajib').map(a => a.name),
-                completedCount: Object.values(dayData).filter(a => a?.completed).length,
+                completedCount: Object.values(dayData).reduce((sum, a) => {
+                    return sum + (a?.completed ? getSessionCount(a) : 0);
+                }, 0),
                 totalCount: allActivities.length,
             });
         }
@@ -1128,6 +1185,7 @@ export function AppProvider({ children }) {
         communityStats,
         announcements,
         customActivities,
+        activityCategories,
 
         // Setters
         setCurrentPage,
@@ -1154,6 +1212,7 @@ export function AppProvider({ children }) {
         loadUserData,
         addCustomActivityToDay,
         removeCustomActivityFromDay,
+        setActivityCategories,
 
         // Getters
         getTodayActivities: getSelectedDayActivities,

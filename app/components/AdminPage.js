@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import CustomActivitiesManager from './CustomActivitiesManager';
 import AdminLeaderboard from './AdminLeaderboard';
 import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
 
@@ -615,9 +614,6 @@ export default function AdminPage() {
 
             {/* Comprehensive Leaderboard */}
             <AdminLeaderboard />
-
-            {/* Custom Activities Manager */}
-            <CustomActivitiesManager />
         </main>
     );
 }

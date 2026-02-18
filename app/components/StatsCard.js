@@ -26,8 +26,8 @@ export default function StatsCard() {
                     <div className="stat-label">Tadarus</div>
                 </div>
                 <div className="stat-item">
-                    <div className="stat-value">{stats.streak || 0}</div>
-                    <div className="stat-label">Streak 🔥</div>
+                    <div className="stat-value">{stats.totalTugas || 0}</div>
+                    <div className="stat-label">Tugas 🎯</div>
                 </div>
             </div>
         </div>

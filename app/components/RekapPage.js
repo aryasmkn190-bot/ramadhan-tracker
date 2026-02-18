@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import QURAN_SURAHS from '../data/quranSurahs';
 import DailyClockChart from './DailyClockChart';
+import { getActivityColor } from '../utils/activityColors';
+import { getSessionCount } from '../utils/activityHelpers';
 import {
     BarChart,
     Bar,
@@ -20,7 +22,6 @@ import {
     Area,
 } from 'recharts';
 
-const PIE_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444', '#06b6d4', '#a78bfa', '#fb923c', '#34d399', '#84cc16', '#22d3ee', '#e879f9', '#facc15', '#2dd4bf', '#818cf8', '#f472b6', '#c084fc'];
 const RANK_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 export default function RekapPage() {
@@ -69,13 +70,25 @@ export default function RekapPage() {
             const dateStr = getDateForRamadanDay(day);
             const dayActs = activities[dateStr] || {};
 
-            const prayersCompleted = DEFAULT_PRAYERS.filter(p => dayActs[p.id]?.completed).length;
-            const sunnahCompleted = DEFAULT_SUNNAH.filter(s => dayActs[s.id]?.completed).length;
-            const activitiesCompleted = DEFAULT_ACTIVITIES.filter(a => dayActs[a.id]?.completed).length;
+            const prayersCompleted = DEFAULT_PRAYERS.reduce((sum, p) => {
+                const d = dayActs[p.id];
+                return sum + (d?.completed ? getSessionCount(d) : 0);
+            }, 0);
+            const sunnahCompleted = DEFAULT_SUNNAH.reduce((sum, s) => {
+                const d = dayActs[s.id];
+                return sum + (d?.completed ? getSessionCount(d) : 0);
+            }, 0);
+            const activitiesCompleted = DEFAULT_ACTIVITIES.reduce((sum, a) => {
+                const d = dayActs[a.id];
+                return sum + (d?.completed ? getSessionCount(d) : 0);
+            }, 0);
 
             // Only count custom activities that were actually added for this day
             const addedCustomForDay = customActivities.filter(ca => dayActs[ca.id]?.added);
-            const customCompleted = addedCustomForDay.filter(c => dayActs[c.id]?.completed).length;
+            const customCompleted = addedCustomForDay.reduce((sum, c) => {
+                const d = dayActs[c.id];
+                return sum + (d?.completed ? getSessionCount(d) : 0);
+            }, 0);
 
             const total = prayersCompleted + sunnahCompleted + activitiesCompleted + customCompleted;
 
@@ -146,7 +159,7 @@ export default function RekapPage() {
         const keys = sortedIds.map((id, i) => ({
             key: id,
             name: `${actIdToInfo[id].icon} ${actIdToInfo[id].name}`,
-            color: PIE_COLORS[i % PIE_COLORS.length],
+            color: getActivityColor(id, actIdToInfo[id].name),
         }));
 
         return { data, keys };
@@ -163,7 +176,7 @@ export default function RekapPage() {
             allActivityDefs.forEach(act => {
                 if (dayActs[act.id]?.completed) {
                     if (!actCounts[act.id]) {
-                        actCounts[act.id] = { name: `${act.icon} ${act.name}`, value: 0 };
+                        actCounts[act.id] = { actId: act.id, name: `${act.icon} ${act.name}`, value: 0 };
                     }
                     actCounts[act.id].value++;
                 }
@@ -174,9 +187,9 @@ export default function RekapPage() {
             .filter(item => item.value > 0)
             .sort((a, b) => b.value - a.value);
 
-        return result.map((item, i) => ({
+        return result.map((item) => ({
             ...item,
-            color: PIE_COLORS[i % PIE_COLORS.length],
+            color: getActivityColor(item.actId, item.name.replace(/^\S+\s/, '')),
         }));
     }, [daysToInclude, activities, getDateForRamadanDay, allActivityDefs]);
 
@@ -274,15 +287,26 @@ export default function RekapPage() {
                 let displayName = actDef?.name;
                 if (!displayName) {
                     if (data.name) {
-                        displayName = data.name.replace(' (lanjutan)', '');
+                        displayName = data.name.replace(/\s*\(lanjutan\)$/, '');
                     } else {
                         displayName = baseId;
                     }
                 }
+                // Append notes for amanah activities (with fallback to previous day)
+                let actNotes = data.notes || '';
+                if (!actNotes && actId.endsWith('__spillover')) {
+                    const prevDate = new Date(dateStr + 'T12:00:00');
+                    prevDate.setDate(prevDate.getDate() - 1);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    actNotes = activities[prevDateStr]?.[baseId]?.notes || '';
+                }
+                if (actNotes && !displayName.includes(actNotes)) {
+                    displayName = `${displayName} ${actNotes}`;
+                }
                 const icon = actDef?.icon || '📌';
 
                 if (!hourMap[baseId]) {
-                    hourMap[baseId] = { name: displayName, icon, totalMinutes: 0, dayCount: 0 };
+                    hourMap[baseId] = { actId: baseId, name: displayName, icon, totalMinutes: 0, dayCount: 0 };
                 }
                 hourMap[baseId].totalMinutes += minutes;
                 if (!actId.endsWith('__spillover')) {
@@ -337,6 +361,14 @@ export default function RekapPage() {
                 const originalId = key.replace('__spillover', '');
                 const allDefault = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
                 const original = allDefault.find(a => a.id === originalId);
+                // Get notes: from spillover data, or fallback to previous day's original
+                let spillNotes = data.notes || '';
+                if (!spillNotes) {
+                    const prevDate = new Date(dateStr + 'T12:00:00');
+                    prevDate.setDate(prevDate.getDate() - 1);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    spillNotes = activities[prevDateStr]?.[originalId]?.notes || '';
+                }
                 result.push({
                     id: key,
                     name: `${original?.name || originalId} (lanjutan)`,
@@ -346,6 +378,7 @@ export default function RekapPage() {
                     timeData: {
                         startTime: data.startTime || null,
                         endTime: data.endTime || null,
+                        notes: spillNotes || null,
                     },
                     isSpillover: true,
                 });
@@ -705,12 +738,7 @@ export default function RekapPage() {
                                 const durationStr = hours > 0 && mins > 0
                                     ? `${hours}j ${mins}m`
                                     : hours > 0 ? `${hours}j` : `${mins}m`;
-                                const barColors = [
-                                    '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899',
-                                    '#06b6d4', '#ef4444', '#84cc16', '#f97316', '#14b8a6',
-                                    '#a855f7', '#e879f9', '#22d3ee', '#facc15', '#fb923c',
-                                ];
-                                const color = barColors[i % barColors.length];
+                                const color = getActivityColor(item.actId || item.name, item.name);
 
                                 return (
                                     <div key={item.name + i}>

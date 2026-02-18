@@ -1,40 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-
-// Large palette of visually distinct colors for per-activity coloring
-const ACTIVITY_PALETTE = [
-    '#10b981', // emerald
-    '#f59e0b', // amber
-    '#3b82f6', // blue
-    '#8b5cf6', // violet
-    '#ec4899', // pink
-    '#06b6d4', // cyan
-    '#ef4444', // red
-    '#84cc16', // lime
-    '#f97316', // orange
-    '#14b8a6', // teal
-    '#a855f7', // purple
-    '#e879f9', // fuchsia
-    '#22d3ee', // sky
-    '#facc15', // yellow
-    '#fb923c', // light orange
-    '#4ade80', // light green
-    '#818cf8', // indigo
-    '#f472b6', // light pink
-    '#2dd4bf', // mint
-    '#c084fc', // light purple
-];
-
-// Deterministic hash for activity name → palette index
-function activityColorIndex(name) {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = ((hash << 5) - hash) + name.charCodeAt(i);
-        hash |= 0;
-    }
-    return Math.abs(hash) % ACTIVITY_PALETTE.length;
-}
+import { getActivityColor, buildActivityColorMap, IDLE_COLOR } from '../utils/activityColors';
 
 const SIZE = 520;
 const CX = SIZE / 2;
@@ -107,6 +74,7 @@ export default function DailyClockChart({ dayActivities }) {
                             if (endH < startH) endH = 24; // overnight: clip to midnight
                             if (endH > 24) endH = 24;
                             segs.push({
+                                activityId: act.id,
                                 name: act.name,
                                 icon: act.icon,
                                 category: act.category || 'other',
@@ -130,6 +98,7 @@ export default function DailyClockChart({ dayActivities }) {
                     if (endH < startH) endH = 24; // overnight: clip to midnight
                     if (endH > 24) endH = 24;
                     segs.push({
+                        activityId: act.id,
                         name: act.name,
                         icon: act.icon,
                         category: act.category || 'other',
@@ -153,6 +122,7 @@ export default function DailyClockChart({ dayActivities }) {
                         if (endH <= startH) endH = startH + 1;
                         if (endH > 24) endH = 24;
                         segs.push({
+                            activityId: act.id,
                             name: act.name,
                             icon: act.icon,
                             category: act.category || 'other',
@@ -171,6 +141,7 @@ export default function DailyClockChart({ dayActivities }) {
                         if (startH >= 0 && startH < 24) {
                             const endH = Math.min(startH + 1, 24);
                             segs.push({
+                                activityId: act.id,
                                 name: act.name,
                                 icon: act.icon,
                                 category: act.category || 'other',
@@ -236,25 +207,27 @@ export default function DailyClockChart({ dayActivities }) {
         if (cursor < 24) idleGaps.push({ startH: cursor, endH: 24 });
         const totalIdleHours = idleGaps.reduce((sum, g) => sum + (g.endH - g.startH), 0);
 
-        // ======= Assign unique colors per activity name =======
+        // ======= Assign unique colors per activity (by ID for consistency) =======
         const usedNames = [...new Set(segs.map(s => s.name))];
+        // Build color map keyed by activityId for deterministic colors
+        const uniqueIds = [...new Set(segs.map(s => s.activityId || s.name))];
+        // Build a name lookup for override matching (e.g., "Tidur" → red)
+        const activityNames = {};
+        segs.forEach(seg => {
+            const key = seg.activityId || seg.name;
+            activityNames[key] = seg.name;
+        });
+        const idColorMap = buildActivityColorMap(uniqueIds, activityNames);
+        // Map activityId colors to name-keyed map for legend
         const activityColorMap = {};
-        const usedPaletteIndices = new Set();
-        // First pass: assign by hash
-        usedNames.forEach(name => {
-            let idx = activityColorIndex(name);
-            // Resolve collisions
-            let tries = 0;
-            while (usedPaletteIndices.has(idx) && tries < ACTIVITY_PALETTE.length) {
-                idx = (idx + 1) % ACTIVITY_PALETTE.length;
-                tries++;
-            }
-            usedPaletteIndices.add(idx);
-            activityColorMap[name] = ACTIVITY_PALETTE[idx];
+        segs.forEach(seg => {
+            const key = seg.activityId || seg.name;
+            activityColorMap[seg.name] = idColorMap[key] || '#6b7280';
         });
         // Assign color to each segment
         segs.forEach(seg => {
-            seg.color = activityColorMap[seg.name] || '#6b7280';
+            const key = seg.activityId || seg.name;
+            seg.color = idColorMap[key] || '#6b7280';
         });
 
         return {
@@ -431,8 +404,8 @@ export default function DailyClockChart({ dayActivities }) {
                             <path
                                 key={`idle-${idx}`}
                                 d={donutArc(CX, CY, oR, iR, a1, a2)}
-                                fill="#111827"
-                                opacity="0.55"
+                                fill={IDLE_COLOR}
+                                opacity="0.45"
                                 style={{ pointerEvents: 'none' }}
                             />
                         );
@@ -612,7 +585,7 @@ export default function DailyClockChart({ dayActivities }) {
                             width: '14px',
                             height: '14px',
                             borderRadius: '4px',
-                            background: '#111827',
+                            background: IDLE_COLOR,
                             border: '1px solid var(--dark-500)',
                             flexShrink: 0,
                         }} />

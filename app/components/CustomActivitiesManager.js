@@ -6,15 +6,6 @@ import { useApp } from '../contexts/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Pagination, { usePagination } from './Pagination';
 
-const CATEGORIES = [
-    { value: 'amanah', label: 'Amanah', icon: '🎯' },
-    { value: 'istirahat', label: 'Istirahat', icon: '😴' },
-    { value: 'produktifitas', label: 'Produktifitas', icon: '💼' },
-    { value: 'sosial', label: 'Sosial', icon: '🤝' },
-    { value: 'kesehatan', label: 'Kesehatan', icon: '🏃' },
-    { value: 'pendidikan', label: 'Pendidikan', icon: '📚' },
-    { value: 'lainnya', label: 'Lainnya', icon: '📌' },
-];
 
 const EMOJI_OPTIONS = ['📌', '💼', '😴', '🏃', '📚', '🤝', '🎯', '💡', '🌟', '🎨', '🎵', '🍽️', '☕', '🚗', '✈️', '🏠', '💊', '🧘', '🎮', '📱'];
 
@@ -22,7 +13,7 @@ import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
 
 export default function CustomActivitiesManager() {
     const { isAdmin, user } = useAuth();
-    const { addToast } = useApp();
+    const { addToast, activityCategories } = useApp();
 
     const [activities, setActivities] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -35,6 +26,7 @@ export default function CustomActivitiesManager() {
     const [formIcon, setFormIcon] = useState('📌');
     const [formDescription, setFormDescription] = useState('');
     const [formTargetGroups, setFormTargetGroups] = useState([]); // empty = semua group
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null); // for delete confirmation modal
 
     useEffect(() => {
         if (isAdmin) {
@@ -160,8 +152,6 @@ export default function CustomActivitiesManager() {
     };
 
     const handleDelete = async (id) => {
-        if (!confirm('Yakin ingin menghapus aktivitas ini?')) return;
-
         try {
             const { error } = await supabase
                 .from('custom_activities')
@@ -175,6 +165,8 @@ export default function CustomActivitiesManager() {
         } catch (error) {
             console.error('Error deleting activity:', error);
             addToast('❌ Gagal menghapus aktivitas', 'error');
+        } finally {
+            setDeleteConfirmId(null);
         }
     };
 
@@ -232,7 +224,7 @@ export default function CustomActivitiesManager() {
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {activitiesPagination.paginatedItems.map(activity => {
-                        const cat = CATEGORIES.find(c => c.value === activity.category) || CATEGORIES[5];
+                        const cat = activityCategories.find(c => c.id === activity.category) || { id: 'lainnya', label: 'Lainnya', icon: '📌' };
                         return (
                             <div
                                 key={activity.id}
@@ -315,7 +307,7 @@ export default function CustomActivitiesManager() {
                                         ✏️
                                     </button>
                                     <button
-                                        onClick={() => handleDelete(activity.id)}
+                                        onClick={() => setDeleteConfirmId(activity.id)}
                                         style={{
                                             padding: '6px 10px',
                                             background: 'rgba(239, 68, 68, 0.2)',
@@ -355,10 +347,12 @@ export default function CustomActivitiesManager() {
                         inset: 0,
                         background: 'rgba(0,0,0,0.7)',
                         display: 'flex',
-                        alignItems: 'center',
+                        alignItems: 'flex-start',
                         justifyContent: 'center',
-                        zIndex: 1000,
+                        zIndex: 2000,
                         padding: '20px',
+                        overflowY: 'auto',
+                        paddingBottom: '100px',
                     }}
                     onClick={() => resetForm()}
                 >
@@ -369,6 +363,7 @@ export default function CustomActivitiesManager() {
                             padding: '24px',
                             width: '100%',
                             maxWidth: '400px',
+                            marginTop: '20px',
                         }}
                         onClick={e => e.stopPropagation()}
                     >
@@ -417,8 +412,8 @@ export default function CustomActivitiesManager() {
                                         fontSize: '14px',
                                     }}
                                 >
-                                    {CATEGORIES.map(cat => (
-                                        <option key={cat.value} value={cat.value}>
+                                    {activityCategories.map(cat => (
+                                        <option key={cat.id} value={cat.id}>
                                             {cat.icon} {cat.label}
                                         </option>
                                     ))}
@@ -574,6 +569,77 @@ export default function CustomActivitiesManager() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteConfirmId && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 3000,
+                        padding: '20px',
+                    }}
+                    onClick={() => setDeleteConfirmId(null)}
+                >
+                    <div
+                        style={{
+                            background: 'var(--dark-800)',
+                            borderRadius: 'var(--radius-lg)',
+                            padding: '24px',
+                            width: '100%',
+                            maxWidth: '340px',
+                            textAlign: 'center',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚠️</div>
+                        <h3 style={{ color: 'var(--dark-100)', fontSize: '16px', marginBottom: '8px' }}>
+                            Hapus Aktivitas?
+                        </h3>
+                        <p style={{ color: 'var(--dark-400)', fontSize: '13px', marginBottom: '20px', lineHeight: '1.5' }}>
+                            Yakin ingin menghapus aktivitas ini? Tindakan ini tidak bisa dibatalkan.
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button
+                                onClick={() => setDeleteConfirmId(null)}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    background: 'var(--dark-600)',
+                                    color: 'var(--dark-200)',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius-md)',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                }}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={() => handleDelete(deleteConfirmId)}
+                                style={{
+                                    flex: 1,
+                                    padding: '12px',
+                                    background: 'rgba(239, 68, 68, 0.8)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius-md)',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                }}
+                            >
+                                🗑️ Hapus
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

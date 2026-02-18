@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import UserDetailModal from './UserDetailModal';
 import Pagination, { usePagination } from './Pagination';
 import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
+import { getSessionCount } from '../utils/activityHelpers';
 
 const RAMADAN_START = new Date('2026-02-19');
 
@@ -27,6 +28,7 @@ export default function AdminLeaderboard() {
     const [selectedWeek, setSelectedWeek] = useState(1);
     const [selectedGroup, setSelectedGroup] = useState('all');
     const [rankBy, setRankBy] = useState('total'); // 'total', 'sholat', 'sunnah', 'aktivitas', 'quran'
+    const [filterActivity, setFilterActivity] = useState('all'); // 'all' or specific activity id
     const [selectedUser, setSelectedUser] = useState(null);
 
     // Current Ramadan day
@@ -73,7 +75,7 @@ export default function AdminLeaderboard() {
                 // Still fetch activities for idle hours calculation (needs start_time/end_time)
                 const actRes = await supabase
                     .from('daily_activities')
-                    .select('user_id, activity_date, activity_id, completed, start_time, end_time');
+                    .select('user_id, activity_date, activity_id, activity_name, completed, start_time, end_time');
                 if (actRes.data) setAllActivities(actRes.data);
                 setQuranData([]); // Not needed when using RPC
             } else {
@@ -83,7 +85,7 @@ export default function AdminLeaderboard() {
 
                 const [profilesRes, activitiesRes, quranRes] = await Promise.all([
                     supabase.from('profiles').select('id, full_name, user_group, role, email'),
-                    supabase.from('daily_activities').select('user_id, activity_date, activity_id, completed, start_time, end_time'),
+                    supabase.from('daily_activities').select('user_id, activity_date, activity_id, activity_name, completed, start_time, end_time'),
                     supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
                 ]);
 
@@ -140,6 +142,73 @@ export default function AdminLeaderboard() {
     const SUNNAH_IDS = ['tahajud', 'dhuha', 'tarawih', 'witir'];
     const AKTIVITAS_IDS = ['sahur', 'puasa', 'buka', 'dzikir', 'sedekah', 'tadarus'];
 
+    // Default activity definitions for name/icon lookup
+    const DEFAULT_ACTIVITY_MAP = {
+        subuh: '🌅 Sholat Subuh', dzuhur: '☀️ Sholat Dzuhur', ashar: '🌤️ Sholat Ashar',
+        maghrib: '🌅 Sholat Maghrib', isya: '🌙 Sholat Isya',
+        tahajud: '🌌 Sholat Tahajud', dhuha: '🌞 Sholat Dhuha',
+        tarawih: '🕌 Sholat Tarawih', witir: '⭐ Sholat Witir',
+        sahur: '🍽️ Sahur', puasa: '☪️ Puasa', buka: '🌙 Buka Puasa',
+        dzikir: '📿 Dzikir Pagi/Petang', sedekah: '💝 Sedekah', tadarus: '📖 Tadarus Al-Quran',
+    };
+
+    // Build dynamic activity options from actual data
+    const activityFilterOptions = useMemo(() => {
+        // Collect all unique activity IDs from actual data (strip spillover suffix)
+        const activityMap = {}; // id -> { id, name, category }
+        allActivities.forEach(a => {
+            if (!a.completed) return;
+            const baseId = a.activity_id.replace('__spillover', '');
+            if (activityMap[baseId]) return; // already mapped
+
+            // Determine name and category
+            let name = '';
+            let category = 'other';
+
+            if (DEFAULT_ACTIVITY_MAP[baseId]) {
+                name = DEFAULT_ACTIVITY_MAP[baseId];
+                if (SHOLAT_IDS.includes(baseId)) category = 'sholat';
+                else if (SUNNAH_IDS.includes(baseId)) category = 'sunnah';
+                else if (AKTIVITAS_IDS.includes(baseId)) category = 'aktivitas';
+            } else {
+                // Custom or other activity — use stored name
+                const cleanName = (a.activity_name || baseId)
+                    .replace(/\s*\(lanjutan\)$/, '');
+                name = cleanName;
+
+                // Check if it's a known custom activity
+                const customAct = customActivitiesList.find(ca => `custom_${ca.id}` === baseId);
+                if (customAct) {
+                    name = `${customAct.icon} ${customAct.name}`;
+                    category = customAct.category || 'other';
+                }
+            }
+
+            activityMap[baseId] = { id: baseId, name, category };
+        });
+
+        // Group by category
+        const groups = {
+            sholat: { label: '🕌 Sholat Wajib', items: [] },
+            sunnah: { label: '⭐ Sholat Sunnah', items: [] },
+            aktivitas: { label: '📋 Aktivitas Harian', items: [] },
+            amanah: { label: '🎯 Amanah (Tugas)', items: [] },
+            other: { label: '📌 Lainnya', items: [] },
+        };
+
+        Object.values(activityMap).forEach(act => {
+            const cat = groups[act.category] ? act.category : 'other';
+            groups[cat].items.push(act);
+        });
+
+        // Sort items within each group
+        Object.values(groups).forEach(g => {
+            g.items.sort((a, b) => a.name.localeCompare(b.name));
+        });
+
+        return groups;
+    }, [allActivities, customActivitiesList]);
+
     // RPC leaderboard data (pre-aggregated from database)
     const [rpcLeaderboardData, setRpcLeaderboardData] = useState([]);
 
@@ -161,6 +230,20 @@ export default function AdminLeaderboard() {
     // Build set of amanah activity IDs from custom activities list
     const amanahIds = useMemo(() => {
         return new Set(customActivitiesList.filter(ca => ca.category === 'amanah').map(ca => `custom_${ca.id}`));
+    }, [customActivitiesList]);
+
+    // Build set of "tidur/istirahat" activity IDs
+    const tidurIds = useMemo(() => {
+        return new Set(customActivitiesList
+            .filter(ca => ca.category === 'istirahat' || ca.name?.toLowerCase().includes('tidur'))
+            .map(ca => `custom_${ca.id}`));
+    }, [customActivitiesList]);
+
+    // Build set of "hiburan" activity IDs
+    const hiburanIds = useMemo(() => {
+        return new Set(customActivitiesList
+            .filter(ca => ca.category === 'hiburan')
+            .map(ca => `custom_${ca.id}`));
     }, [customActivitiesList]);
 
     // Helper: parse "HH:MM" to fractional hours (same as DailyClockChart)
@@ -227,6 +310,57 @@ export default function AdminLeaderboard() {
     // Total days in current filter range
     const totalDaysInRange = filteredDates.length;
 
+    // Productivity score calculator: normalizes and weights multiple metrics
+    const calculateProductivityScores = (users) => {
+        if (users.length === 0) return;
+
+        // Find max values for normalization
+        const maxOf = (key) => Math.max(...users.map(u => u[key] || 0), 1);
+
+        const maxAmanah = maxOf('amanah');
+        const maxAmanahHours = maxOf('amanah_hours');
+        const maxSholat = maxOf('sholat');
+        const maxSunnah = maxOf('sunnah');
+        const maxAktivitas = Math.max(...users.map(u => (u.aktivitas || 0) + (u.custom || 0)), 1);
+        const maxQuran = maxOf('quran_ayat');
+        const maxTidurCount = maxOf('tidur_count');
+        const maxTidurHours = maxOf('tidur_hours');
+        const maxIdle = maxOf('idle_hours');
+        const maxHiburan = maxOf('hiburan_count');
+
+        // Weights: positive = good (higher is better), negative = bad (lower is better)
+        const weights = {
+            amanah: 20,         // tugas completion count
+            amanah_hours: 15,   // tugas duration
+            sholat: 15,         // sholat wajib
+            sunnah: 10,         // sholat sunnah
+            aktivitas: 10,      // aktivitas ramadhan
+            quran: 15,          // tadarus quran
+            tidur_count: -5,    // less sleep sessions = more productive
+            tidur_hours: -8,    // less sleep hours = more productive
+            idle: -10,          // less idle hours = more productive
+            hiburan: -7,        // less entertainment = more productive
+        };
+
+        users.forEach(u => {
+            let score = 0;
+            // Positive factors (normalized 0-1, higher is better)
+            score += (u.amanah / maxAmanah) * weights.amanah;
+            score += ((u.amanah_hours || 0) / maxAmanahHours) * weights.amanah_hours;
+            score += (u.sholat / maxSholat) * weights.sholat;
+            score += (u.sunnah / maxSunnah) * weights.sunnah;
+            score += (((u.aktivitas || 0) + (u.custom || 0)) / maxAktivitas) * weights.aktivitas;
+            score += (u.quran_ayat / maxQuran) * weights.quran;
+
+            // Negative factors (normalized 0-1, then inverted: less = better score)
+            score += (1 - (u.tidur_count || 0) / maxTidurCount) * Math.abs(weights.tidur_count);
+            score += (1 - (u.tidur_hours || 0) / maxTidurHours) * Math.abs(weights.tidur_hours);
+            score += (1 - (u.idle_hours || 0) / maxIdle) * Math.abs(weights.idle);
+            score += (1 - (u.hiburan_count || 0) / maxHiburan) * Math.abs(weights.hiburan);
+
+            u.produktif_score = Math.round(score);
+        });
+    };
     const rankedUsers = useMemo(() => {
         // Helper: compute idle hours per user from allActivities
         const computeUserIdleHours = (userId) => {
@@ -240,11 +374,104 @@ export default function AdminLeaderboard() {
             return Math.round(totalIdle);
         };
 
+        // Helper: count specific activity completions (sessions) and total hours for a user
+        const countUserActivity = (userId, activityId) => {
+            const matched = allActivities.filter(a =>
+                a.user_id === userId &&
+                a.completed &&
+                filteredDates.includes(a.activity_date) &&
+                (a.activity_id === activityId || a.activity_id === `${activityId}__spillover`)
+            );
+            let totalSessions = 0;
+            let totalMinutes = 0;
+            matched.forEach(a => {
+                const sc = getSessionCount(a);
+                totalSessions += sc;
+                if (!a.start_time) return;
+                if (a.end_time === '__multi__') {
+                    try {
+                        JSON.parse(a.start_time).forEach(s => {
+                            if (s.start && s.end) {
+                                const startH = parseTime(s.start);
+                                let endH = parseTime(s.end);
+                                if (startH === null || endH === null) return;
+                                if (endH < startH) endH += 24;
+                                totalMinutes += (endH - startH) * 60;
+                            }
+                        });
+                    } catch { }
+                } else if (a.start_time && a.end_time) {
+                    const startH = parseTime(a.start_time);
+                    let endH = parseTime(a.end_time);
+                    if (startH !== null && endH !== null) {
+                        if (endH < startH) endH += 24;
+                        totalMinutes += (endH - startH) * 60;
+                    }
+                }
+            });
+            return { count: totalSessions, hours: Math.round(totalMinutes / 60 * 10) / 10 };
+        };
+
+        // Helper: compute hours for a single activity record from its time fields
+        const computeActivityHours = (a) => {
+            let hours = 0;
+            if (!a.start_time) return 0;
+            if (a.end_time === '__multi__') {
+                try {
+                    JSON.parse(a.start_time).forEach(s => {
+                        if (s.start && s.end) {
+                            const sH = parseTime(s.start);
+                            let eH = parseTime(s.end);
+                            if (sH !== null && eH !== null) {
+                                if (eH < sH) eH += 24;
+                                hours += (eH - sH);
+                            }
+                        }
+                    });
+                } catch { }
+            } else if (a.end_time) {
+                const sH = parseTime(a.start_time);
+                let eH = parseTime(a.end_time);
+                if (sH !== null && eH !== null) {
+                    if (eH < sH) eH += 24;
+                    hours += (eH - sH);
+                }
+            }
+            return hours;
+        };
+
+        // Helper: compute tidur/amanah/hiburan metrics for a user from raw activities
+        const computeExtraMetrics = (userId) => {
+            let tidur_count = 0, tidur_hours = 0, amanah_hours = 0, hiburan_count = 0;
+            allActivities.forEach(a => {
+                if (a.user_id !== userId || !a.completed || !filteredDates.includes(a.activity_date)) return;
+                const baseId = a.activity_id.replace('__spillover', '');
+                const sc = getSessionCount(a);
+                if (tidurIds.has(baseId)) {
+                    tidur_count += sc;
+                    tidur_hours += computeActivityHours(a);
+                }
+                if (amanahIds.has(baseId)) {
+                    amanah_hours += computeActivityHours(a);
+                }
+                if (hiburanIds.has(baseId)) {
+                    hiburan_count += sc;
+                }
+            });
+            return {
+                tidur_count,
+                tidur_hours: Math.round(tidur_hours * 10) / 10,
+                amanah_hours: Math.round(amanah_hours * 10) / 10,
+                hiburan_count,
+            };
+        };
+
         // RPC mode: data is already aggregated by the database
         if (useRpc === true && rpcLeaderboardData.length > 0) {
             let users = rpcLeaderboardData.map(r => {
                 const total = Number(r.total) || 0;
-                return {
+                const extra = computeExtraMetrics(r.user_id);
+                const user = {
                     id: r.user_id,
                     full_name: r.full_name,
                     user_group: r.user_group,
@@ -258,19 +485,40 @@ export default function AdminLeaderboard() {
                     total,
                     quran_ayat: Number(r.quran_ayat) || Number(r.quran_sessions) || 0,
                     idle_hours: computeUserIdleHours(r.user_id),
+                    activityCount: 0,
+                    activityHours: 0,
+                    ...extra,
+                    produktif_score: 0,
                 };
+                // Count specific activity if filtered
+                if (filterActivity !== 'all') {
+                    const result = countUserActivity(r.user_id, filterActivity);
+                    user.activityCount = result.count;
+                    user.activityHours = result.hours;
+                }
+                return user;
             });
 
+            // Calculate productivity scores
+            if (rankBy === 'produktif') {
+                calculateProductivityScores(users);
+            }
+
             // Sort client-side
-            users.sort((a, b) => {
-                if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
-                if (rankBy === 'sholat') return b.sholat - a.sholat;
-                if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
-                if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
-                if (rankBy === 'amanah') return b.amanah - a.amanah;
-                if (rankBy === 'idle') return b.idle_hours - a.idle_hours || a.total - b.total;
-                return b.total - a.total;
-            });
+            if (filterActivity !== 'all') {
+                users.sort((a, b) => b.activityCount - a.activityCount || b.total - a.total);
+            } else {
+                users.sort((a, b) => {
+                    if (rankBy === 'produktif') return b.produktif_score - a.produktif_score;
+                    if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
+                    if (rankBy === 'sholat') return b.sholat - a.sholat;
+                    if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
+                    if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
+                    if (rankBy === 'amanah') return b.amanah - a.amanah;
+                    if (rankBy === 'idle') return b.idle_hours - a.idle_hours || a.total - b.total;
+                    return b.total - a.total;
+                });
+            }
 
             return users;
         }
@@ -298,24 +546,56 @@ export default function AdminLeaderboard() {
                 amanah: 0,
                 total: 0,
                 quran_ayat: 0,
+                activityCount: 0,
+                activityHours: 0,
+                tidur_count: 0,
+                tidur_hours: 0,
+                amanah_hours: 0,
+                hiburan_count: 0,
+                produktif_score: 0,
             };
         });
 
         relevantActivities.forEach(a => {
             if (!userStats[a.user_id]) return;
+            const baseId = a.activity_id.replace('__spillover', '');
+
+            const sc = getSessionCount(a);
 
             if (SHOLAT_IDS.includes(a.activity_id)) {
-                userStats[a.user_id].sholat++;
+                userStats[a.user_id].sholat += sc;
             } else if (SUNNAH_IDS.includes(a.activity_id)) {
-                userStats[a.user_id].sunnah++;
+                userStats[a.user_id].sunnah += sc;
             } else if (AKTIVITAS_IDS.includes(a.activity_id)) {
-                userStats[a.user_id].aktivitas++;
+                userStats[a.user_id].aktivitas += sc;
             } else if (amanahIds.has(a.activity_id)) {
-                userStats[a.user_id].amanah++;
+                userStats[a.user_id].amanah += sc;
             } else {
-                userStats[a.user_id].custom++;
+                userStats[a.user_id].custom += sc;
             }
-            userStats[a.user_id].total++;
+            userStats[a.user_id].total += sc;
+
+            // Track tidur metrics
+            if (tidurIds.has(baseId)) {
+                userStats[a.user_id].tidur_count += sc;
+                userStats[a.user_id].tidur_hours += computeActivityHours(a);
+            }
+            // Track amanah hours
+            if (amanahIds.has(baseId)) {
+                userStats[a.user_id].amanah_hours += computeActivityHours(a);
+            }
+            // Track hiburan
+            if (hiburanIds.has(baseId)) {
+                userStats[a.user_id].hiburan_count += sc;
+            }
+
+            // Count specific activity and hours
+            if (filterActivity !== 'all') {
+                if (baseId === filterActivity) {
+                    userStats[a.user_id].activityCount += sc;
+                    userStats[a.user_id].activityHours += computeActivityHours(a);
+                }
+            }
 
             // Group by user+date for idle calculation
             const key = `${a.user_id}_${a.activity_date}`;
@@ -342,6 +622,9 @@ export default function AdminLeaderboard() {
                 totalIdle += calcIdleHours(dayActs);
             });
             userStats[uid].idle_hours = Math.round(totalIdle);
+            userStats[uid].activityHours = Math.round(userStats[uid].activityHours * 10) / 10;
+            userStats[uid].tidur_hours = Math.round(userStats[uid].tidur_hours * 10) / 10;
+            userStats[uid].amanah_hours = Math.round(userStats[uid].amanah_hours * 10) / 10;
         });
 
         let users = Object.values(userStats);
@@ -349,18 +632,28 @@ export default function AdminLeaderboard() {
             users = users.filter(u => u.user_group === selectedGroup);
         }
 
-        users.sort((a, b) => {
-            if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
-            if (rankBy === 'sholat') return b.sholat - a.sholat;
-            if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
-            if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
-            if (rankBy === 'amanah') return b.amanah - a.amanah;
-            if (rankBy === 'idle') return b.idle_hours - a.idle_hours || a.total - b.total;
-            return b.total - a.total;
-        });
+        // Calculate productivity scores if needed
+        if (rankBy === 'produktif') {
+            calculateProductivityScores(users);
+        }
+
+        if (filterActivity !== 'all') {
+            users.sort((a, b) => b.activityCount - a.activityCount || b.total - a.total);
+        } else {
+            users.sort((a, b) => {
+                if (rankBy === 'produktif') return b.produktif_score - a.produktif_score;
+                if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
+                if (rankBy === 'sholat') return b.sholat - a.sholat;
+                if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
+                if (rankBy === 'aktivitas') return (b.aktivitas + b.custom) - (a.aktivitas + a.custom);
+                if (rankBy === 'amanah') return b.amanah - a.amanah;
+                if (rankBy === 'idle') return b.idle_hours - a.idle_hours || a.total - b.total;
+                return b.total - a.total;
+            });
+        }
 
         return users;
-    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy, amanahIds, totalDaysInRange]);
+    }, [useRpc, rpcLeaderboardData, profiles, allActivities, quranData, filteredDates, selectedGroup, rankBy, filterActivity, amanahIds, tidurIds, hiburanIds, totalDaysInRange]);
 
     // Group ranking (aggregated scores)
     const groupRanking = useMemo(() => {
@@ -400,6 +693,18 @@ export default function AdminLeaderboard() {
     }, [filterMode, selectedDay, selectedWeek]);
 
     const getSortValue = (user) => {
+        if (filterActivity !== 'all') {
+            const hrs = user.activityHours || 0;
+            if (hrs > 0) {
+                // Format hours nicely
+                const h = Math.floor(hrs);
+                const m = Math.round((hrs - h) * 60);
+                const timeStr = m > 0 ? `${h}j${m}m` : `${h}j`;
+                return `${user.activityCount}x • ${timeStr}`;
+            }
+            return `${user.activityCount}x`;
+        }
+        if (rankBy === 'produktif') return `${user.produktif_score} poin`;
         if (rankBy === 'quran') return `${user.quran_ayat} ayat`;
         if (rankBy === 'sholat') return `${user.sholat}x`;
         if (rankBy === 'sunnah') return `${user.sunnah}x`;
@@ -528,98 +833,159 @@ export default function AdminLeaderboard() {
                 </div>
             )}
 
-            {/* Rank By selector */}
+            {/* Advanced Filters Row */}
             <div style={{
                 display: 'flex',
-                gap: '5px',
-                overflowX: 'auto',
+                gap: '6px',
                 marginBottom: '10px',
-                paddingBottom: '4px',
+                flexWrap: 'wrap',
             }}>
-                {[
-                    { id: 'total', label: '🔢 Total', color: '#10b981' },
-                    { id: 'sholat', label: '🕌 Sholat', color: '#3b82f6' },
-                    { id: 'sunnah', label: '⭐ Sunnah', color: '#a78bfa' },
-                    { id: 'aktivitas', label: '📋 Aktivitas', color: '#f59e0b' },
-                    { id: 'amanah', label: '🎯 Amanah', color: '#f472b6' },
-                    { id: 'quran', label: '📖 Quran', color: '#fbbf24' },
-                    { id: 'idle', label: '⏳ Tidak Ada Aktivitas', color: '#ef4444' },
-                ].map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => setRankBy(item.id)}
+                {/* Rank By Dropdown */}
+                <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label style={{ fontSize: '9px', color: 'var(--dark-500)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', marginBottom: '4px', display: 'block' }}>
+                        Urutkan
+                    </label>
+                    <select
+                        value={rankBy}
+                        onChange={(e) => setRankBy(e.target.value)}
                         style={{
-                            padding: '5px 10px',
-                            borderRadius: 'var(--radius-full)',
-                            border: 'none',
-                            background: rankBy === item.id
-                                ? `${item.color}22`
-                                : 'var(--dark-700)',
-                            color: rankBy === item.id ? item.color : 'var(--dark-400)',
-                            fontSize: '11px',
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--dark-600)',
+                            background: 'var(--dark-700)',
+                            color: 'var(--dark-100)',
+                            fontSize: '12px',
                             fontWeight: '600',
                             cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0,
+                            appearance: 'none',
+                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                            backgroundRepeat: 'no-repeat',
+                            backgroundPosition: 'right 8px center',
+                            paddingRight: '28px',
                         }}
                     >
-                        {item.label}
-                    </button>
-                ))}
+                        <option value="produktif">🏅 Paling Produktif</option>
+                        <option value="total">🔢 Total Aktivitas</option>
+                        <option value="sholat">🕌 Sholat Wajib</option>
+                        <option value="sunnah">⭐ Sholat Sunnah</option>
+                        <option value="aktivitas">📋 Aktivitas Harian</option>
+                        <option value="amanah">🎯 Amanah (Tugas)</option>
+                        <option value="quran">📖 Tadarus Quran</option>
+                        <option value="idle">⏳ Waktu Kosong</option>
+                    </select>
+                </div>
+
+                {/* Activity Filter Dropdown */}
+                <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label style={{ fontSize: '9px', color: 'var(--dark-500)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', marginBottom: '4px', display: 'block' }}>
+                        Filter Aktivitas
+                    </label>
+                    <select
+                        value={filterActivity}
+                        onChange={(e) => setFilterActivity(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--dark-600)',
+                            background: 'var(--dark-700)',
+                            color: 'var(--dark-100)',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            appearance: 'none',
+                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                            backgroundRepeat: 'no-repeat',
+                            backgroundPosition: 'right 8px center',
+                            paddingRight: '28px',
+                        }}
+                    >
+                        <option value="all">📊 Semua Aktivitas</option>
+                        {Object.entries(activityFilterOptions).map(([catKey, group]) => (
+                            group.items.length > 0 && (
+                                <optgroup key={catKey} label={group.label}>
+                                    {group.items.map(act => (
+                                        <option key={act.id} value={act.id}>
+                                            {act.name}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            )
+                        ))}
+                    </select>
+                </div>
+
+                {/* Group Filter Dropdown */}
+                <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label style={{ fontSize: '9px', color: 'var(--dark-500)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', marginBottom: '4px', display: 'block' }}>
+                        Grup
+                    </label>
+                    <select
+                        value={selectedGroup}
+                        onChange={(e) => setSelectedGroup(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--dark-600)',
+                            background: 'var(--dark-700)',
+                            color: 'var(--dark-100)',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            appearance: 'none',
+                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                            backgroundRepeat: 'no-repeat',
+                            backgroundPosition: 'right 8px center',
+                            paddingRight: '28px',
+                        }}
+                    >
+                        <option value="all">👥 Semua Grup</option>
+                        {USER_GROUPS.map(group => (
+                            <option key={group} value={group}>{group}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
-            {/* Group filter */}
-            <div style={{
-                display: 'flex',
-                gap: '5px',
-                overflowX: 'auto',
-                marginBottom: '14px',
-                paddingBottom: '4px',
-            }}>
-                <button
-                    onClick={() => setSelectedGroup('all')}
-                    style={{
-                        padding: '5px 10px',
-                        borderRadius: 'var(--radius-full)',
-                        border: 'none',
-                        background: selectedGroup === 'all' ? 'var(--emerald-600)' : 'var(--dark-700)',
-                        color: selectedGroup === 'all' ? 'white' : 'var(--dark-400)',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                    }}
-                >
-                    Semua Grup
-                </button>
-                {USER_GROUPS.map(group => {
-                    const colors = GROUP_COLORS[group];
-                    const shortLabel = group
-                        .replace('PTO HOLDING ', 'HOLD ')
-                        .replace('PTO CENTRAL', 'CENTRAL')
-                        .replace('PTO ', 'PTO ');
-                    return (
-                        <button
-                            key={group}
-                            onClick={() => setSelectedGroup(group)}
-                            style={{
-                                padding: '5px 8px',
-                                borderRadius: 'var(--radius-full)',
-                                border: 'none',
-                                background: selectedGroup === group ? colors.bg : 'var(--dark-700)',
-                                color: selectedGroup === group ? colors.text : 'var(--dark-400)',
-                                fontSize: '10px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {shortLabel}
-                        </button>
-                    );
-                })}
-            </div>
+            {/* Active filters indicator */}
+            {filterActivity !== 'all' && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 10px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                    borderRadius: 'var(--radius-md)',
+                    marginBottom: '10px',
+                }}>
+                    <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: '600' }}>
+                        🔍 Filter: {(() => {
+                            for (const group of Object.values(activityFilterOptions)) {
+                                const found = group.items.find(a => a.id === filterActivity);
+                                if (found) return found.name;
+                            }
+                            return filterActivity;
+                        })()}
+                    </span>
+                    <button
+                        onClick={() => setFilterActivity('all')}
+                        style={{
+                            marginLeft: 'auto',
+                            background: 'none',
+                            border: 'none',
+                            color: '#3b82f6',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                        }}
+                    >
+                        ✕ Hapus
+                    </button>
+                </div>
+            )}
 
             {/* Current filter info */}
             <div style={{
@@ -820,14 +1186,34 @@ export default function AdminLeaderboard() {
                                             gap: '6px',
                                             fontSize: '10px',
                                             color: 'var(--dark-400)',
+                                            flexWrap: 'wrap',
                                         }}>
-                                            <span>🕌{user.sholat}</span>
-                                            <span>⭐{user.sunnah}</span>
-                                            <span>📋{user.aktivitas + user.custom}</span>
-                                            {user.amanah > 0 && <span>🎯{user.amanah}</span>}
-                                            <span>📖{user.quran_ayat} ayat</span>
-                                            {user.idle_hours > 0 && (
-                                                <span style={{ color: '#ef4444' }}>⏳{user.idle_hours}j</span>
+                                            {rankBy === 'produktif' ? (
+                                                <>
+                                                    {/* Positive metrics (green) */}
+                                                    <span style={{ color: '#10b981' }} title="Sholat Wajib">🕌{user.sholat}</span>
+                                                    <span style={{ color: '#10b981' }} title="Sholat Sunnah">⭐{user.sunnah}</span>
+                                                    <span style={{ color: '#10b981' }} title="Aktivitas Ramadhan">📋{user.aktivitas + user.custom}</span>
+                                                    <span style={{ color: '#10b981' }} title="Tugas (Amanah)">🎯{user.amanah}({user.amanah_hours}j)</span>
+                                                    <span style={{ color: '#10b981' }} title="Tadarus Quran">📖{user.quran_ayat}</span>
+                                                    {/* Negative metrics (red) */}
+                                                    <span style={{ color: '#ef4444' }} title="Tidur">😴{user.tidur_count}({user.tidur_hours}j)</span>
+                                                    <span style={{ color: '#ef4444' }} title="Waktu Kosong">⏳{user.idle_hours}j</span>
+                                                    {user.hiburan_count > 0 && (
+                                                        <span style={{ color: '#ef4444' }} title="Hiburan">🎮{user.hiburan_count}</span>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>🕌{user.sholat}</span>
+                                                    <span>⭐{user.sunnah}</span>
+                                                    <span>📋{user.aktivitas + user.custom}</span>
+                                                    {user.amanah > 0 && <span>🎯{user.amanah}</span>}
+                                                    <span>📖{user.quran_ayat} ayat</span>
+                                                    {user.idle_hours > 0 && (
+                                                        <span style={{ color: '#ef4444' }}>⏳{user.idle_hours}j</span>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     </div>

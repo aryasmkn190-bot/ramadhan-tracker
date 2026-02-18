@@ -14,13 +14,43 @@ function addMinutesToTime(timeStr, minutes) {
 }
 
 export default function ActivityCard({ activity }) {
-  const { toggleActivity, updateActivityTime, getActivityTimeData, selectedRamadanDay, isSelectedDayToday } = useApp();
+  const { toggleActivity, updateActivityTime, getActivityTimeData, selectedRamadanDay, isSelectedDayToday, activities, getDateForRamadanDay } = useApp();
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [sessions, setSessions] = useState([{ start: '', end: '' }]);
   const [notes, setNotes] = useState('');
   const isWajib = activity.category === 'wajib';
   const isAmanah = activity.category === 'amanah';
-  const [isEditing, setIsEditing] = useState(false); // true when editing a completed activity
+  const [isEditing, setIsEditing] = useState(false);
+  const [showOvernightConfirm, setShowOvernightConfirm] = useState(false);
+
+  // Helper: check if a session crosses midnight
+  const getOvernightInfo = (session) => {
+    if (!session.start || !session.end) return null;
+    const [sh, sm] = session.start.split(':').map(Number);
+    const [eh, em] = session.end.split(':').map(Number);
+    const startMins = sh * 60 + sm;
+    const endMins = eh * 60 + em;
+    if (endMins >= startMins) return null; // normal, no overnight
+    // Crosses midnight
+    const todayMins = (24 * 60) - startMins; // from start to 00:00
+    const tomorrowMins = endMins; // from 00:00 to end
+    const totalMins = todayMins + tomorrowMins;
+    // If total > 12 hours, likely a typo (e.g. 10:30 → 10:00 = 23h30m)
+    const isSuspicious = totalMins > 12 * 60;
+    const fmt = (m) => {
+      const h = Math.floor(m / 60);
+      const min = m % 60;
+      if (h > 0 && min > 0) return `${h} jam ${min} menit`;
+      if (h > 0) return `${h} jam`;
+      return `${min} menit`;
+    };
+    return { todayMins, tomorrowMins, totalMins, isSuspicious, todayStr: fmt(todayMins), tomorrowStr: fmt(tomorrowMins), totalStr: fmt(totalMins) };
+  };
+
+  // Check if any session crosses midnight
+  const hasOvernightSession = sessions.some(s => getOvernightInfo(s) !== null);
+  // Check if any overnight session looks like a typo
+  const hasSuspiciousSession = sessions.some(s => { const info = getOvernightInfo(s); return info?.isSuspicious; });
 
   // Get saved time data for this activity
   const timeData = getActivityTimeData ? getActivityTimeData(activity.id) : null;
@@ -46,6 +76,21 @@ export default function ActivityCard({ activity }) {
     return [];
   };
 
+  // Get notes from the most recent previous day for this activity (for amanah pre-fill)
+  const getPreviousDayNotes = () => {
+    if (!isAmanah) return '';
+    const baseId = activity.id.replace('__spillover', '');
+    // Search up to 7 days back
+    for (let d = 1; d <= 7; d++) {
+      const prevDay = selectedRamadanDay - d;
+      if (prevDay < 1) break;
+      const prevDate = getDateForRamadanDay(prevDay);
+      const prevData = activities[prevDate]?.[baseId];
+      if (prevData?.notes) return prevData.notes;
+    }
+    return '';
+  };
+
   // Initialize sessions when modal opens
   useEffect(() => {
     if (!showTimeModal) return;
@@ -58,14 +103,15 @@ export default function ActivityCard({ activity }) {
       } else {
         setSessions([{ start: '', end: '' }]);
       }
-      // Load saved notes for amanah
-      setNotes(timeData?.notes || '');
+      // Load saved notes for amanah — fallback to previous day if empty
+      setNotes(timeData?.notes || (isAmanah ? getPreviousDayNotes() : ''));
     } else {
       // New activity — set default
       const defaultStart = activity.time?.split?.(' - ')?.[0] || activity.time?.replace?.(/[^\d:]/g, '') || '';
       const defaultEnd = isWajib && defaultStart ? addMinutesToTime(defaultStart, 10) : '';
       setSessions([{ start: defaultStart, end: defaultEnd }]);
-      setNotes('');
+      // Pre-fill notes from previous day for amanah activities
+      setNotes(isAmanah ? getPreviousDayNotes() : '');
     }
   }, [showTimeModal]);
 
@@ -127,10 +173,22 @@ export default function ActivityCard({ activity }) {
     setIsEditing(false);
   };
 
-  const handleSaveTime = () => {
+  const handleSaveTime = (bypassOvernightCheck = false) => {
     // Amanah activities require a description
     if (isAmanah && !notes.trim()) {
-      return; // Don't save without description
+      return;
+    }
+
+    // Block save if any session has suspicious duration (> 12 hours)
+    if (hasSuspiciousSession) {
+      setShowOvernightConfirm(true);
+      return;
+    }
+
+    // Check for overnight sessions — show confirmation first
+    if (!bypassOvernightCheck && hasOvernightSession) {
+      setShowOvernightConfirm(true);
+      return;
     }
 
     // Filter out empty sessions
@@ -150,10 +208,8 @@ export default function ActivityCard({ activity }) {
     const notesValue = notes.trim() || null;
 
     if (isEditing) {
-      // Already completed — just update the time data
       updateActivityTime(activity.id, startTimeValue, endTimeValue, notesValue);
     } else {
-      // New completion
       if (validSessions.length === 0 && !notesValue) {
         toggleActivity(activity.id);
       } else {
@@ -162,22 +218,31 @@ export default function ActivityCard({ activity }) {
     }
 
     setShowTimeModal(false);
+    setShowOvernightConfirm(false);
     setSessions([{ start: '', end: '' }]);
     setNotes('');
     setIsEditing(false);
   };
 
+  // Check if user has entered any time
+  const hasInput = sessions.some(s => s.start);
+
   const handleSkipTime = () => {
     if (isEditing) {
-      // Just close modal, don't change anything
       setShowTimeModal(false);
     } else {
-      // Complete without time data
-      toggleActivity(activity.id);
-      setShowTimeModal(false);
+      // If user typed something, 'Skip' becomes 'Cancel' -> don't save.
+      // If user typed nothing, 'Skip' means 'Save without time' (toggle ON).
+      if (hasInput) {
+        setShowTimeModal(false);
+      } else {
+        toggleActivity(activity.id);
+        setShowTimeModal(false);
+      }
     }
     setSessions([{ start: '', end: '' }]);
     setIsEditing(false);
+    setShowOvernightConfirm(false);
   };
 
   const addSession = () => {
@@ -387,6 +452,59 @@ export default function ActivityCard({ activity }) {
             ))}
           </div>
 
+          {/* Overnight info banners per session */}
+          {sessions.map((session, index) => {
+            const overnight = getOvernightInfo(session);
+            if (!overnight) return null;
+            const borderColor = overnight.isSuspicious ? 'rgba(239, 68, 68, 0.4)' : 'rgba(251, 191, 36, 0.3)';
+            const bgColor = overnight.isSuspicious ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.1)';
+            const accentColor = overnight.isSuspicious ? '#f87171' : '#fbbf24';
+            const dividerColor = overnight.isSuspicious ? 'rgba(239, 68, 68, 0.25)' : 'rgba(251, 191, 36, 0.2)';
+            return (
+              <div key={`overnight-${index}`} style={{
+                margin: '4px 0 8px',
+                padding: '10px 12px',
+                background: bgColor,
+                border: `1px solid ${borderColor}`,
+                borderRadius: '10px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '14px' }}>{overnight.isSuspicious ? '⚠️' : '🌙'}</span>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: accentColor }}>
+                    {sessions.length > 1 ? `Sesi ${index + 1}: ` : ''}{overnight.isSuspicious ? 'Durasi Tidak Wajar!' : 'Melewati Tengah Malam'}
+                  </span>
+                </div>
+                {overnight.isSuspicious && (
+                  <div style={{
+                    fontSize: '11px',
+                    color: '#f87171',
+                    marginBottom: '8px',
+                    padding: '6px 8px',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    borderRadius: '6px',
+                    lineHeight: '1.5',
+                  }}>
+                    ⚠️ Durasi terhitung <strong>{overnight.totalStr}</strong> — kemungkinan waktu selesai salah input. Periksa kembali waktu mulai dan selesai.
+                  </div>
+                )}
+                <div style={{ fontSize: '11px', color: 'var(--dark-300)', lineHeight: '1.6' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span>📅 Hari ini ({session.start} → 00:00):</span>
+                    <span style={{ fontWeight: '600', color: '#60a5fa' }}>{overnight.todayStr}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span>📅 Hari berikutnya (00:00 → {session.end}):</span>
+                    <span style={{ fontWeight: '600', color: '#60a5fa' }}>{overnight.tomorrowStr}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${dividerColor}`, paddingTop: '4px', marginTop: '4px' }}>
+                    <span style={{ fontWeight: '600' }}>⏱️ Total:</span>
+                    <span style={{ fontWeight: '700', color: accentColor }}>{overnight.totalStr}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
           {/* Add session button — hidden for wajib prayers */}
           {!isWajib && (
             <button
@@ -415,7 +533,7 @@ export default function ActivityCard({ activity }) {
                 marginBottom: '6px',
                 letterSpacing: '0.5px',
               }}>
-                🎯 Deskripsi Amanah <span style={{ color: '#ef4444' }}>*</span>
+                🎯 Deskripsi Tugas <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input
                 type="text"
@@ -437,7 +555,7 @@ export default function ActivityCard({ activity }) {
               />
               {!notes.trim() && (
                 <p style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>
-                  Deskripsi wajib diisi untuk aktivitas Amanah
+                  Deskripsi wajib diisi untuk aktivitas Tugas
                 </p>
               )}
             </div>
@@ -472,8 +590,9 @@ export default function ActivityCard({ activity }) {
                 <button
                   className="time-btn-skip"
                   onClick={handleSkipTime}
+                  style={hasInput ? { background: 'var(--dark-600)', color: 'var(--dark-200)' } : {}}
                 >
-                  Lewati
+                  {hasInput ? 'Batal' : 'Lewati'}
                 </button>
                 <button
                   className="time-btn-save"
@@ -484,6 +603,66 @@ export default function ActivityCard({ activity }) {
               </>
             )}
           </div>
+
+          {/* Overnight Confirmation Modal */}
+          {showOvernightConfirm && (
+            <div style={{
+              margin: '12px 0',
+              padding: '14px',
+              background: hasSuspiciousSession ? 'rgba(239, 68, 68, 0.1)' : 'rgba(251, 191, 36, 0.12)',
+              border: `1px solid ${hasSuspiciousSession ? 'rgba(239, 68, 68, 0.4)' : 'rgba(251, 191, 36, 0.35)'}`,
+              borderRadius: '12px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <span style={{ fontSize: '20px' }}>{hasSuspiciousSession ? '🛑' : '⚠️'}</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: hasSuspiciousSession ? '#f87171' : '#fbbf24' }}>
+                  {hasSuspiciousSession ? 'Periksa Waktu Input' : 'Konfirmasi Waktu'}
+                </span>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--dark-300)', lineHeight: '1.6', marginBottom: '12px' }}>
+                {hasSuspiciousSession
+                  ? 'Waktu selesai lebih awal dari waktu mulai dan durasi terhitung sangat lama (lebih dari 12 jam). Kemungkinan besar ini adalah kesalahan input. Apakah Anda yakin ingin menyimpan?'
+                  : 'Waktu selesai lebih awal dari waktu mulai. Aktivitas ini akan dihitung melewati tengah malam (jam 12 malam). Apakah Anda yakin?'
+                }
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => setShowOvernightConfirm(false)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    background: hasSuspiciousSession ? 'rgba(59, 130, 246, 0.2)' : 'var(--dark-600)',
+                    color: hasSuspiciousSession ? '#60a5fa' : 'var(--dark-200)',
+                    border: hasSuspiciousSession ? '1px solid rgba(59, 130, 246, 0.3)' : 'none',
+                    borderRadius: '8px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                  }}
+                >
+                  {hasSuspiciousSession ? '← Perbaiki Waktu' : 'Ubah Waktu'}
+                </button>
+                {!hasSuspiciousSession && (
+                  <button
+                    onClick={() => handleSaveTime(true)}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      background: 'rgba(251, 191, 36, 0.3)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(251, 191, 36, 0.4)',
+                      borderRadius: '8px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                    }}
+                  >
+                    ✓ Ya, Simpan
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

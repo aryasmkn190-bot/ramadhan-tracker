@@ -4,14 +4,15 @@ import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import QURAN_SURAHS, { TOTAL_AYAT } from '../data/quranSurahs';
 import DailyClockChart from './DailyClockChart';
+import { getSessionCount } from '../utils/activityHelpers';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts';
 import { GROUP_COLORS } from '../data/userGroups';
+import { getActivityColor } from '../utils/activityColors';
 
 const RAMADAN_START = new Date('2026-02-19');
-const PIE_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444', '#06b6d4', '#a78bfa', '#fb923c', '#34d399', '#84cc16', '#22d3ee', '#e879f9', '#facc15', '#2dd4bf', '#818cf8', '#f472b6', '#c084fc'];
 
 const DEFAULT_PRAYERS = [
     { id: 'subuh', name: 'Sholat Subuh', icon: '🌅', category: 'wajib' },
@@ -168,13 +169,25 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
     const dailyData = useMemo(() => daysToInclude.map(day => {
         const dateStr = getDateForRamadanDay(day);
         const dayActs = activities[dateStr] || {};
-        const pc = DEFAULT_PRAYERS.filter(p => dayActs[p.id]?.completed).length;
-        const sc = DEFAULT_SUNNAH.filter(s => dayActs[s.id]?.completed).length;
-        const ac = DEFAULT_ACTIVITIES.filter(a => dayActs[a.id]?.completed).length;
+        const pc = DEFAULT_PRAYERS.reduce((sum, p) => {
+            const d = dayActs[p.id];
+            return sum + (d?.completed ? getSessionCount(d) : 0);
+        }, 0);
+        const sc = DEFAULT_SUNNAH.reduce((sum, s) => {
+            const d = dayActs[s.id];
+            return sum + (d?.completed ? getSessionCount(d) : 0);
+        }, 0);
+        const ac = DEFAULT_ACTIVITIES.reduce((sum, a) => {
+            const d = dayActs[a.id];
+            return sum + (d?.completed ? getSessionCount(d) : 0);
+        }, 0);
 
         // Only count custom activities that were actually added for this day
         const addedCustomForDay = customActivities.filter(ca => dayActs[ca.id]?.added);
-        const cc = addedCustomForDay.filter(c => dayActs[c.id]?.completed).length;
+        const cc = addedCustomForDay.reduce((sum, c) => {
+            const d = dayActs[c.id];
+            return sum + (d?.completed ? getSessionCount(d) : 0);
+        }, 0);
 
         const total = pc + sc + ac + cc;
         // maxTotal = defaults + added customs for this specific day
@@ -205,13 +218,13 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
             const dayActs = activities[getDateForRamadanDay(day)] || {};
             allActivityDefs.forEach(act => {
                 if (dayActs[act.id]?.completed) {
-                    if (!counts[act.id]) counts[act.id] = { name: `${act.icon} ${act.name}`, value: 0 };
+                    if (!counts[act.id]) counts[act.id] = { actId: act.id, name: `${act.icon} ${act.name}`, value: 0 };
                     counts[act.id].value++;
                 }
             });
         });
         return Object.values(counts).filter(i => i.value > 0).sort((a, b) => b.value - a.value)
-            .map((item, i) => ({ ...item, color: PIE_COLORS[i % PIE_COLORS.length] }));
+            .map((item) => ({ ...item, color: getActivityColor(item.actId, item.name.replace(/^\S+\s/, '')) }));
     }, [daysToInclude, activities, allActivityDefs]);
 
     // Stats
@@ -251,10 +264,18 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                 const origId = key.replace('__spillover', '');
                 const allDef = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
                 const orig = allDef.find(a => a.id === origId);
+                // Get notes with fallback to previous day
+                let spillNotes = data.notes || '';
+                if (!spillNotes) {
+                    const prevDate = new Date(dateStr + 'T12:00:00');
+                    prevDate.setDate(prevDate.getDate() - 1);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    spillNotes = activities[prevDateStr]?.[origId]?.notes || '';
+                }
                 result.push({
                     id: key, name: `${orig?.name || origId} (lanjutan)`, icon: orig?.icon || '🔄',
                     category: orig?.category || 'other', completed: true,
-                    timeData: { startTime: data.startTime || null, endTime: data.endTime || null }, isSpillover: true,
+                    timeData: { startTime: data.startTime || null, endTime: data.endTime || null, notes: spillNotes || null }, isSpillover: true,
                 });
             }
         });
@@ -268,7 +289,8 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
         const calcM = (s, e) => { const sm = parseT(s), em = parseT(e); if (sm === null || em === null) return 0; return em >= sm ? em - sm : (1440 - sm) + em; };
         const hm = {};
         daysToInclude.forEach(day => {
-            const dayActs = activities[getDateForRamadanDay(day)] || {};
+            const dateStr = getDateForRamadanDay(day);
+            const dayActs = activities[dateStr] || {};
             Object.entries(dayActs).forEach(([actId, data]) => {
                 if (!data?.completed || !data.startTime) return;
                 let mins = 0;
@@ -278,9 +300,20 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                 if (mins <= 0) return;
                 const baseId = actId.endsWith('__spillover') ? actId.replace('__spillover', '') : actId;
                 const def = allActivityDefs.find(a => a.id === baseId);
-                let name = def?.name || data.name?.replace(' (lanjutan)', '') || baseId;
+                let name = def?.name || data.name?.replace(/\s*\(lanjutan\)$/, '') || baseId;
+                // Get notes with fallback to previous day
+                let actNotes = data.notes || '';
+                if (!actNotes && actId.endsWith('__spillover')) {
+                    const prevDate = new Date(dateStr + 'T12:00:00');
+                    prevDate.setDate(prevDate.getDate() - 1);
+                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                    actNotes = activities[prevDateStr]?.[baseId]?.notes || '';
+                }
+                if (actNotes && !name.includes(actNotes)) {
+                    name = `${name} ${actNotes}`;
+                }
                 const icon = def?.icon || '📌';
-                if (!hm[baseId]) hm[baseId] = { name, icon, totalMinutes: 0, dayCount: 0 };
+                if (!hm[baseId]) hm[baseId] = { actId: baseId, name, icon, totalMinutes: 0, dayCount: 0 };
                 hm[baseId].totalMinutes += mins;
                 if (!actId.endsWith('__spillover')) hm[baseId].dayCount++;
             });
@@ -466,8 +499,7 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                                             const barW = Math.max((item.totalHours / maxH) * 100, 8);
                                             const h = Math.floor(item.totalHours), m = Math.round((item.totalHours - h) * 60);
                                             const dur = h > 0 && m > 0 ? `${h}j ${m}m` : h > 0 ? `${h}j` : `${m}m`;
-                                            const colors = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#ef4444', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#e879f9', '#22d3ee', '#facc15', '#fb923c'];
-                                            const c = colors[i % colors.length];
+                                            const c = getActivityColor(item.actId || item.name, item.name);
                                             return (
                                                 <div key={i}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>

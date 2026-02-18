@@ -6,6 +6,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import UserDetailModal from './UserDetailModal';
 import Pagination, { usePagination } from './Pagination';
 import { GROUP_COLORS } from '../data/userGroups';
+import { getSessionCount } from '../utils/activityHelpers';
 
 const RAMADAN_START = new Date('2026-02-19');
 
@@ -117,6 +118,81 @@ export default function GroupRekapPage() {
         return new Set(customActivitiesList.filter(ca => ca.category === 'amanah').map(ca => `custom_${ca.id}`));
     }, [customActivitiesList]);
 
+    // Build set of tidur/istirahat activity IDs
+    const tidurIds = useMemo(() => {
+        return new Set(customActivitiesList
+            .filter(ca => ca.category === 'istirahat' || ca.name?.toLowerCase().includes('tidur'))
+            .map(ca => `custom_${ca.id}`));
+    }, [customActivitiesList]);
+
+    // Build set of hiburan activity IDs
+    const hiburanIds = useMemo(() => {
+        return new Set(customActivitiesList
+            .filter(ca => ca.category === 'hiburan')
+            .map(ca => `custom_${ca.id}`));
+    }, [customActivitiesList]);
+
+    // Helper: compute hours for a single activity record
+    const computeActivityHours = (a) => {
+        let hours = 0;
+        if (!a.start_time) return 0;
+        if (a.end_time === '__multi__') {
+            try {
+                JSON.parse(a.start_time).forEach(s => {
+                    if (s.start && s.end) {
+                        const sH = parseTime(s.start);
+                        let eH = parseTime(s.end);
+                        if (sH !== null && eH !== null) {
+                            if (eH < sH) eH += 24;
+                            hours += (eH - sH);
+                        }
+                    }
+                });
+            } catch { }
+        } else if (a.end_time) {
+            const sH = parseTime(a.start_time);
+            let eH = parseTime(a.end_time);
+            if (sH !== null && eH !== null) {
+                if (eH < sH) eH += 24;
+                hours += (eH - sH);
+            }
+        }
+        return hours;
+    };
+
+    // Productivity score calculator
+    const calculateProductivityScores = (users) => {
+        if (users.length === 0) return;
+        const maxOf = (key) => Math.max(...users.map(u => u[key] || 0), 1);
+        const maxAmanah = maxOf('amanah');
+        const maxAmanahHours = maxOf('amanah_hours');
+        const maxSholat = maxOf('sholat');
+        const maxSunnah = maxOf('sunnah');
+        const maxAktivitas = Math.max(...users.map(u => (u.aktivitas || 0) + (u.custom || 0)), 1);
+        const maxQuran = maxOf('quran_ayat');
+        const maxTidurCount = maxOf('tidur_count');
+        const maxTidurHours = maxOf('tidur_hours');
+        const maxIdle = maxOf('idle_hours');
+        const maxHiburan = maxOf('hiburan_count');
+
+        const w = { amanah: 20, amanah_hours: 15, sholat: 15, sunnah: 10, aktivitas: 10, quran: 15, tidur_count: 5, tidur_hours: 8, idle: 10, hiburan: 7 };
+
+        users.forEach(u => {
+            let score = 0;
+            score += (u.amanah / maxAmanah) * w.amanah;
+            score += ((u.amanah_hours || 0) / maxAmanahHours) * w.amanah_hours;
+            score += (u.sholat / maxSholat) * w.sholat;
+            score += (u.sunnah / maxSunnah) * w.sunnah;
+            score += (((u.aktivitas || 0) + (u.custom || 0)) / maxAktivitas) * w.aktivitas;
+            score += (u.quran_ayat / maxQuran) * w.quran;
+            score += (1 - (u.tidur_count || 0) / maxTidurCount) * w.tidur_count;
+            score += (1 - (u.tidur_hours || 0) / maxTidurHours) * w.tidur_hours;
+            score += (1 - (u.idle_hours || 0) / maxIdle) * w.idle;
+            score += (1 - (u.hiburan_count || 0) / maxHiburan) * w.hiburan;
+            u.produktif_score = Math.round(score);
+        });
+    };
+
     // Helper: parse "HH:MM" to fractional hours
     const parseTime = (timeStr) => {
         if (!timeStr) return null;
@@ -196,23 +272,42 @@ export default function GroupRekapPage() {
                 amanah: 0,
                 total: 0,
                 quran_ayat: 0,
+                tidur_count: 0,
+                tidur_hours: 0,
+                amanah_hours: 0,
+                hiburan_count: 0,
+                produktif_score: 0,
             };
         });
 
         relevantActivities.forEach(a => {
             if (!userStats[a.user_id]) return;
+            const baseId = a.activity_id.replace('__spillover', '');
+            const sc = getSessionCount(a);
             if (SHOLAT_IDS.includes(a.activity_id)) {
-                userStats[a.user_id].sholat++;
+                userStats[a.user_id].sholat += sc;
             } else if (SUNNAH_IDS.includes(a.activity_id)) {
-                userStats[a.user_id].sunnah++;
+                userStats[a.user_id].sunnah += sc;
             } else if (AKTIVITAS_IDS.includes(a.activity_id)) {
-                userStats[a.user_id].aktivitas++;
+                userStats[a.user_id].aktivitas += sc;
             } else if (amanahIds.has(a.activity_id)) {
-                userStats[a.user_id].amanah++;
+                userStats[a.user_id].amanah += sc;
             } else {
-                userStats[a.user_id].custom++;
+                userStats[a.user_id].custom += sc;
             }
-            userStats[a.user_id].total++;
+            userStats[a.user_id].total += sc;
+
+            // Track productivity metrics
+            if (tidurIds.has(baseId)) {
+                userStats[a.user_id].tidur_count += sc;
+                userStats[a.user_id].tidur_hours += computeActivityHours(a);
+            }
+            if (amanahIds.has(baseId)) {
+                userStats[a.user_id].amanah_hours += computeActivityHours(a);
+            }
+            if (hiburanIds.has(baseId)) {
+                userStats[a.user_id].hiburan_count += sc;
+            }
 
             const key = `${a.user_id}_${a.activity_date}`;
             if (!userDateActivities[key]) userDateActivities[key] = [];
@@ -238,10 +333,19 @@ export default function GroupRekapPage() {
                 totalIdle += calcIdleHours(dayActs);
             });
             userStats[uid].idle_hours = Math.round(totalIdle);
+            userStats[uid].tidur_hours = Math.round(userStats[uid].tidur_hours * 10) / 10;
+            userStats[uid].amanah_hours = Math.round(userStats[uid].amanah_hours * 10) / 10;
         });
 
         let users = Object.values(userStats);
+
+        // Calculate productivity scores if needed
+        if (rankBy === 'produktif') {
+            calculateProductivityScores(users);
+        }
+
         users.sort((a, b) => {
+            if (rankBy === 'produktif') return b.produktif_score - a.produktif_score;
             if (rankBy === 'quran') return b.quran_ayat - a.quran_ayat;
             if (rankBy === 'sholat') return b.sholat - a.sholat;
             if (rankBy === 'sunnah') return b.sunnah - a.sunnah;
@@ -252,7 +356,7 @@ export default function GroupRekapPage() {
         });
 
         return users;
-    }, [profiles, allActivities, quranData, filteredDates, rankBy, amanahIds]);
+    }, [profiles, allActivities, quranData, filteredDates, rankBy, amanahIds, tidurIds, hiburanIds]);
 
     // Stats summary
     const groupStats = useMemo(() => {
@@ -396,6 +500,7 @@ export default function GroupRekapPage() {
             {/* Sort By */}
             <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', overflowX: 'auto' }}>
                 {[
+                    { value: 'produktif', label: '🏅 Produktif' },
                     { value: 'total', label: '🏆 Total' },
                     { value: 'sholat', label: '🕌 Sholat' },
                     { value: 'sunnah', label: '⭐ Sunnah' },
@@ -502,29 +607,48 @@ export default function GroupRekapPage() {
                                                 }}>ADMIN</span>
                                             )}
                                         </div>
-                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px' }}>
-                                            🕌 {user.sholat} • ⭐ {user.sunnah} • 📋 {user.aktivitas + user.custom}
-                                            {user.amanah > 0 && <> • 🎯 {user.amanah}</>}
-                                            {' '}• 📖 {user.quran_ayat} ayat
-                                            {user.idle_hours > 0 && <span style={{ color: '#ef4444' }}> • ⏳{user.idle_hours}j</span>}
+                                        <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '2px 6px' }}>
+                                            {rankBy === 'produktif' ? (
+                                                <>
+                                                    <span style={{ color: '#10b981' }}>🕌{user.sholat}</span>
+                                                    <span style={{ color: '#10b981' }}>⭐{user.sunnah}</span>
+                                                    <span style={{ color: '#10b981' }}>📋{user.aktivitas + user.custom}</span>
+                                                    <span style={{ color: '#10b981' }}>🎯{user.amanah}({user.amanah_hours}j)</span>
+                                                    <span style={{ color: '#10b981' }}>📖{user.quran_ayat}</span>
+                                                    <span style={{ color: '#ef4444' }}>�{user.tidur_count}({user.tidur_hours}j)</span>
+                                                    <span style={{ color: '#ef4444' }}>⏳{user.idle_hours}j</span>
+                                                    {user.hiburan_count > 0 && <span style={{ color: '#ef4444' }}>🎮{user.hiburan_count}</span>}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>�🕌 {user.sholat}</span>
+                                                    <span>• ⭐ {user.sunnah}</span>
+                                                    <span>• 📋 {user.aktivitas + user.custom}</span>
+                                                    {user.amanah > 0 && <span>• 🎯 {user.amanah}</span>}
+                                                    <span>• 📖 {user.quran_ayat} ayat</span>
+                                                    {user.idle_hours > 0 && <span style={{ color: '#ef4444' }}>• ⏳{user.idle_hours}j</span>}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
 
                                     {/* Total */}
                                     <div style={{ textAlign: 'right' }}>
                                         <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981' }}>
-                                            {rankBy === 'quran' ? user.quran_ayat :
-                                                rankBy === 'sholat' ? user.sholat :
-                                                    rankBy === 'sunnah' ? user.sunnah :
-                                                        rankBy === 'aktivitas' ? user.aktivitas + user.custom :
-                                                            rankBy === 'amanah' ? user.amanah :
-                                                                rankBy === 'idle' ? user.idle_hours :
-                                                                    user.total}
+                                            {rankBy === 'produktif' ? user.produktif_score :
+                                                rankBy === 'quran' ? user.quran_ayat :
+                                                    rankBy === 'sholat' ? user.sholat :
+                                                        rankBy === 'sunnah' ? user.sunnah :
+                                                            rankBy === 'aktivitas' ? user.aktivitas + user.custom :
+                                                                rankBy === 'amanah' ? user.amanah :
+                                                                    rankBy === 'idle' ? user.idle_hours :
+                                                                        user.total}
                                         </div>
                                         <div style={{ fontSize: '10px', color: 'var(--dark-500)' }}>
-                                            {rankBy === 'quran' ? 'ayat' :
-                                                rankBy === 'idle' ? 'jam' :
-                                                    rankBy === 'amanah' ? 'amanah' : 'aktivitas'}
+                                            {rankBy === 'produktif' ? 'poin' :
+                                                rankBy === 'quran' ? 'ayat' :
+                                                    rankBy === 'idle' ? 'jam' :
+                                                        rankBy === 'amanah' ? 'amanah' : 'aktivitas'}
                                         </div>
                                     </div>
 
