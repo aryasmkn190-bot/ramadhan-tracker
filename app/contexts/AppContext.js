@@ -530,8 +530,8 @@ export function AppProvider({ children }) {
             return;
         }
 
-        // Prevent filling activities for future days
-        if (selectedRamadanDay > clampedRamadanDay) {
+        // Prevent filling activities for future days (based on Gregorian date)
+        if (selectedRamadanDay > maxSelectableDay) {
             addToast('⛔ Tidak bisa mengisi aktivitas untuk hari yang belum tiba', 'error');
             return;
         }

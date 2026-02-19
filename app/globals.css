@@ -376,7 +376,7 @@ body {
 /* Main Content */
 .main-content {
   padding: 20px;
-  padding-top: calc(104px + env(safe-area-inset-top, 0px));
+  padding-top: calc(115px + env(safe-area-inset-top, 0px));
   padding-bottom: 100px;
 }
 
