@@ -71,11 +71,14 @@ export default function Header() {
         headerSubtitle = `${currentRamadanDay} Ramadhan 1447 H`;
         dayBadge = `Hari ke-${currentRamadanDay}`;
     } else {
-        const ramadanStart = new Date('2026-02-19');
+        // Countdown to Ramadan — Maghrib on Feb 17 = Ramadan starts
+        const ramadanStart = new Date('2026-02-18T00:00:00');
         const todayReset = new Date(today);
         todayReset.setHours(0, 0, 0, 0);
         const diffTime = ramadanStart - todayReset;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        // After Maghrib, countdown reduces by 1 (closer to Ramadan)
+        if (today.getHours() >= 18) diffDays -= 1;
         if (diffDays > 0) {
             headerSubtitle = `${diffDays} hari menuju Ramadhan`;
             dayBadge = `H-${diffDays}`;
@@ -172,7 +175,7 @@ export default function Header() {
                     </div>
 
                     {/* Right: Clock + Avatar + Badge */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                         {/* Digital Clock WIB */}
                         <div style={{
                             display: 'flex',

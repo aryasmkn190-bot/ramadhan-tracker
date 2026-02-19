@@ -92,7 +92,7 @@
 
 /* Light theme specific overrides for elements with rgba / hardcoded colors */
 [data-theme="light"] body {
-  background: var(--night-gradient);
+  background: var(--dark-800);
   color: var(--dark-100);
 }
 
@@ -272,10 +272,11 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--dark-800);
 }
 
 body {
-  background: var(--night-gradient);
+  background: var(--dark-800);
   color: var(--dark-100);
   min-height: 100vh;
   min-height: 100dvh;
@@ -298,11 +299,19 @@ body {
 .header {
   background: linear-gradient(135deg, #047857 0%, #065f46 40%, #064e3b 100%);
   padding: 14px 18px 12px;
-  position: sticky;
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  position: fixed;
   top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
   z-index: 100;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(16, 185, 129, 0.2);
+  overflow: visible;
 }
+
+
 
 .header-content {
   display: flex;
@@ -314,6 +323,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .header-icon {
@@ -335,11 +346,12 @@ body {
 }
 
 .header h1 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: white;
   letter-spacing: -0.3px;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .header-date {
@@ -364,6 +376,7 @@ body {
 /* Main Content */
 .main-content {
   padding: 20px;
+  padding-top: calc(90px + env(safe-area-inset-top, 0px));
   padding-bottom: 100px;
 }
 

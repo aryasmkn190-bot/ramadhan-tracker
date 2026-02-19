@@ -116,12 +116,18 @@ export default function AdminAnnouncementsPage() {
     const handleDelete = async () => {
         if (!deletingItem) return;
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('announcements')
                 .delete()
-                .eq('id', deletingItem.id);
+                .eq('id', deletingItem.id)
+                .select();
 
             if (error) throw error;
+
+            // Check if any row was actually deleted (RLS may silently block)
+            if (!data || data.length === 0) {
+                throw new Error('Tidak dapat menghapus. Pastikan Anda memiliki izin admin dan policy DELETE sudah aktif di Supabase.');
+            }
 
             setAnnouncements(prev => prev.filter(a => a.id !== deletingItem.id));
             addToast('✅ Pengumuman berhasil dihapus', 'success');

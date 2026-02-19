@@ -169,6 +169,15 @@ CREATE POLICY "Admins can update announcements"
     )
   );
 
+CREATE POLICY "Admins can delete announcements"
+  ON announcements FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles 
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
 -- ===========================================
 -- 6. FUNCTIONS & TRIGGERS
 -- ===========================================

@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 
+const MONTHS_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+
 export default function DaySelector() {
   const {
     currentRamadanDay,
@@ -18,6 +21,21 @@ export default function DaySelector() {
   } = useApp();
 
   const [showDayPicker, setShowDayPicker] = useState(false);
+
+  // Format date from day number
+  const formatDate = (day) => {
+    const dateStr = getDateForRamadanDay(day);
+    const [, month, dayOfMonth] = dateStr.split('-');
+    const m = parseInt(month) - 1;
+    const d = parseInt(dayOfMonth);
+    return {
+      day: d,
+      monthShort: MONTHS_SHORT[m],
+      monthLong: MONTHS_ID[m],
+      full: `${d} ${MONTHS_ID[m]}`,
+      short: `${d} ${MONTHS_SHORT[m]}`,
+    };
+  };
 
   // Check if a day has any completed activities
   const getDayStatus = (day) => {
@@ -35,6 +53,7 @@ export default function DaySelector() {
   const availableDays = Array.from({ length: 30 }, (_, i) => i + 1);
 
   const isRamadanStarted = currentRamadanDay >= 1;
+  const selectedDate = formatDate(selectedRamadanDay);
 
   return (
     <>
@@ -54,9 +73,9 @@ export default function DaySelector() {
           onClick={() => setShowDayPicker(true)}
         >
           <div className="day-display-content">
-            <span className="day-number">Hari {selectedRamadanDay}</span>
+            <span className="day-number">{selectedDate.full}</span>
             <span className="day-label">
-              {isSelectedDayToday && isRamadanStarted ? '(Hari Ini)' : getDateForRamadanDay(selectedRamadanDay)}
+              {isSelectedDayToday && isRamadanStarted ? '(Hari Ini)' : `Hari ke-${selectedRamadanDay}`}
             </span>
           </div>
           <span className="day-dropdown-icon">▼</span>
@@ -65,7 +84,7 @@ export default function DaySelector() {
         <button
           className="day-nav-btn"
           onClick={goToNextDay}
-          disabled={selectedRamadanDay >= 30}
+          disabled={selectedRamadanDay >= currentRamadanDay || selectedRamadanDay >= 30}
           aria-label="Next day"
         >
           ›
@@ -77,7 +96,7 @@ export default function DaySelector() {
         <div className="past-day-banner">
           <div className="past-day-info">
             <span className="past-day-icon">📅</span>
-            <span>Mengisi aktivitas untuk <strong>Hari {selectedRamadanDay}</strong></span>
+            <span>Mengisi aktivitas untuk <strong>{selectedDate.full}</strong></span>
           </div>
           <button className="past-day-today-btn" onClick={goToToday}>
             Ke Hari Ini
@@ -93,7 +112,7 @@ export default function DaySelector() {
         <div className="modal-content" onClick={e => e.stopPropagation()}>
           <div className="modal-handle"></div>
           <div className="modal-header">
-            <h2 className="modal-title">Pilih Hari Ramadhan</h2>
+            <h2 className="modal-title">Pilih Tanggal</h2>
             <button
               className="modal-close"
               onClick={() => setShowDayPicker(false)}
@@ -103,7 +122,7 @@ export default function DaySelector() {
           </div>
 
           <p style={{ fontSize: '13px', color: 'var(--dark-400)', marginBottom: '16px' }}>
-            Kamu bisa mengisi aktivitas untuk hari-hari sebelumnya yang terlewat
+            Kamu bisa mengisi aktivitas untuk tanggal hari ini dan sebelumnya
           </p>
 
           <div className="day-picker-grid">
@@ -111,21 +130,28 @@ export default function DaySelector() {
               const status = getDayStatus(day);
               const isSelected = day === selectedRamadanDay;
               const isToday = day === currentRamadanDay;
+              const isFuture = day > currentRamadanDay;
+              const dateInfo = formatDate(day);
 
               return (
                 <button
                   key={day}
-                  className={`day-picker-item ${isSelected ? 'selected' : ''} ${status}`}
+                  className={`day-picker-item ${isSelected ? 'selected' : ''} ${isFuture ? 'locked' : status}`}
+                  disabled={isFuture}
                   onClick={() => {
-                    goToDay(day);
-                    setShowDayPicker(false);
+                    if (!isFuture) {
+                      goToDay(day);
+                      setShowDayPicker(false);
+                    }
                   }}
                 >
-                  <span className="day-picker-number">{day}</span>
-                  {isToday && <span className="day-picker-today">Hari Ini</span>}
-                  {!isToday && status === 'complete' && <span className="day-picker-status">✓</span>}
-                  {!isToday && status === 'partial' && <span className="day-picker-status partial">◐</span>}
-                  {!isToday && status === 'empty' && <span className="day-picker-status empty">○</span>}
+                  <span className={`day-picker-number ${isFuture ? 'locked' : ''}`}>{dateInfo.day}</span>
+                  <span className="day-picker-month">{dateInfo.monthShort}</span>
+                  {isFuture && <span className="day-picker-lock">🔒</span>}
+                  {isToday && !isFuture && <span className="day-picker-today">Hari Ini</span>}
+                  {!isToday && !isFuture && status === 'complete' && <span className="day-picker-status">✓</span>}
+                  {!isToday && !isFuture && status === 'partial' && <span className="day-picker-status partial">◐</span>}
+                  {!isToday && !isFuture && status === 'empty' && <span className="day-picker-status empty">○</span>}
                 </button>
               );
             })}
@@ -186,7 +212,7 @@ export default function DaySelector() {
 
         .day-display {
           flex: 1;
-          max-width: 200px;
+          max-width: 220px;
           padding: 10px 16px;
           background: var(--primary-gradient);
           border: none;
@@ -212,7 +238,7 @@ export default function DaySelector() {
         }
 
         .day-number {
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 700;
         }
 
@@ -275,8 +301,8 @@ export default function DaySelector() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 2px;
-          padding: 8px;
+          gap: 1px;
+          padding: 6px;
           background: var(--dark-700);
           border: 2px solid transparent;
           border-radius: var(--radius-md);
@@ -284,8 +310,20 @@ export default function DaySelector() {
           transition: all 0.2s ease;
         }
 
-        .day-picker-item:hover {
+        .day-picker-item:hover:not(:disabled) {
           background: var(--dark-600);
+        }
+
+        .day-picker-item:disabled,
+        .day-picker-item.locked {
+          opacity: 0.35;
+          cursor: not-allowed;
+          background: var(--dark-800);
+          border-color: transparent;
+        }
+
+        .day-picker-item:disabled:hover {
+          background: var(--dark-800);
         }
 
         .day-picker-item.selected {
@@ -305,16 +343,34 @@ export default function DaySelector() {
           font-size: 16px;
           font-weight: 700;
           color: var(--dark-100);
+          line-height: 1.1;
+        }
+
+        .day-picker-number.locked {
+          color: var(--dark-500);
+        }
+
+        .day-picker-month {
+          font-size: 9px;
+          font-weight: 600;
+          color: var(--dark-400);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
 
         .day-picker-today {
-          font-size: 8px;
+          font-size: 7px;
           color: var(--emerald-400);
           font-weight: 600;
         }
 
+        .day-picker-lock {
+          font-size: 8px;
+          line-height: 1;
+        }
+
         .day-picker-status {
-          font-size: 10px;
+          font-size: 9px;
           color: var(--success);
         }
 

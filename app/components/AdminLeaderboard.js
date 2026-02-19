@@ -7,12 +7,15 @@ import Pagination, { usePagination } from './Pagination';
 import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
 import { getSessionCount } from '../utils/activityHelpers';
 
-const RAMADAN_START = new Date('2026-02-19');
+const RAMADAN_START_STR = '2026-02-18'; // 1 Ramadhan 1447 H
 
 const getDateForRamadanDay = (day) => {
-    const date = new Date(RAMADAN_START);
+    const date = new Date(RAMADAN_START_STR + 'T00:00:00');
     date.setDate(date.getDate() + day - 1);
-    return date.toISOString().split('T')[0];
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
 };
 
 export default function AdminLeaderboard() {
@@ -33,8 +36,12 @@ export default function AdminLeaderboard() {
 
     // Current Ramadan day
     const today = new Date();
-    const daysSinceRamadan = Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24));
-    const currentRamadanDay = Math.min(Math.max(daysSinceRamadan + 1, 1), 30);
+    const isAfterMaghrib = today.getHours() >= 18;
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayMidnight = new Date(todayStr + 'T00:00:00');
+    const ramadanStart = new Date(RAMADAN_START_STR + 'T00:00:00');
+    const daysSinceRamadan = Math.floor((todayMidnight - ramadanStart) / (1000 * 60 * 60 * 24));
+    const currentRamadanDay = Math.min(Math.max(daysSinceRamadan + 1 + (isAfterMaghrib ? 1 : 0), 1), 30);
 
     // Track whether we're using optimized RPC or fallback
     const [useRpc, setUseRpc] = useState(null);

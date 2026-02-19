@@ -12,7 +12,7 @@ import {
 import { GROUP_COLORS } from '../data/userGroups';
 import { getActivityColor } from '../utils/activityColors';
 
-const RAMADAN_START = new Date('2026-02-19');
+const RAMADAN_START_STR = '2026-02-18'; // 1 Ramadhan 1447 H
 
 const DEFAULT_PRAYERS = [
     { id: 'subuh', name: 'Sholat Subuh', icon: '🌅', category: 'wajib' },
@@ -37,9 +37,12 @@ const DEFAULT_ACTIVITIES = [
 ];
 
 const getDateForRamadanDay = (day) => {
-    const date = new Date(RAMADAN_START);
+    const date = new Date(RAMADAN_START_STR + 'T00:00:00');
     date.setDate(date.getDate() + day - 1);
-    return date.toISOString().split('T')[0];
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
 };
 
 export default function UserDetailModal({ user, onClose, adminQuranData, adminActivitiesData }) {
@@ -50,8 +53,12 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
     const [filterMode, setFilterMode] = useState('day');
     const [selectedDay, setSelectedDay] = useState(() => {
         const today = new Date();
-        const ds = Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24));
-        return Math.min(Math.max(ds + 1, 1), 30);
+        const isAfterMaghrib = today.getHours() >= 18;
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const todayMidnight = new Date(todayStr + 'T00:00:00');
+        const ramadanStart = new Date(RAMADAN_START_STR + 'T00:00:00');
+        const ds = Math.floor((todayMidnight - ramadanStart) / (1000 * 60 * 60 * 24));
+        return Math.min(Math.max(ds + 1 + (isAfterMaghrib ? 1 : 0), 1), 30);
     });
 
     useEffect(() => {

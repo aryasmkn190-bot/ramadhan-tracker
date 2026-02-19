@@ -33,13 +33,16 @@ const DEFAULT_ACTIVITIES = [
     { id: 'tadarus', name: 'Tadarus Al-Quran', icon: '📖', time: 'Setelah Subuh/Maghrib', category: 'quran' },
 ];
 
-const RAMADAN_START = new Date('2026-02-19');
+const RAMADAN_START_STR = '2026-02-18'; // 1 Ramadhan 1447 H
 
 // Helper to get date string for a specific Ramadan day
 const getDateForRamadanDay = (day) => {
-    const date = new Date(RAMADAN_START);
+    const date = new Date(RAMADAN_START_STR + 'T00:00:00');
     date.setDate(date.getDate() + day - 1);
-    return date.toISOString().split('T')[0];
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
 };
 
 // Helper: get next date string
@@ -105,10 +108,15 @@ export function AppProvider({ children }) {
     const [selectedRamadanDay, setSelectedRamadanDay] = useState(1);
 
     const today = new Date();
-    const todayString = today.toISOString().split('T')[0];
-    const daysSinceRamadan = Math.ceil((today - RAMADAN_START) / (1000 * 60 * 60 * 24));
-    // Real current day (can be negative if before Ramadan)
-    const currentRamadanDay = daysSinceRamadan + 1;
+    const currentHour = today.getHours();
+    const isAfterMaghrib = currentHour >= 18;
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    // Normalize both dates to local midnight to avoid UTC offset issues
+    const todayMidnight = new Date(todayString + 'T00:00:00');
+    const ramadanStart = new Date(RAMADAN_START_STR + 'T00:00:00');
+    const daysSinceRamadan = Math.floor((todayMidnight - ramadanStart) / (1000 * 60 * 60 * 24));
+    // Real current day — after Maghrib (18:00), advance to next day per Islamic calendar
+    const currentRamadanDay = daysSinceRamadan + 1 + (isAfterMaghrib ? 1 : 0);
     // Clamped for UI defaults (1-30)
     const clampedRamadanDay = Math.min(Math.max(currentRamadanDay, 1), 30);
 
@@ -515,7 +523,11 @@ export function AppProvider({ children }) {
             return;
         }
 
-        // Validation removed: Users can fill any day (honesty system)
+        // Prevent filling activities for future days
+        if (selectedRamadanDay > clampedRamadanDay) {
+            addToast('⛔ Tidak bisa mengisi aktivitas untuk hari yang belum tiba', 'error');
+            return;
+        }
 
         const allActivities = [...DEFAULT_PRAYERS, ...DEFAULT_SUNNAH, ...DEFAULT_ACTIVITIES, ...customActivities];
         const activity = allActivities.find(a => a.id === activityId);
@@ -1165,16 +1177,16 @@ export function AppProvider({ children }) {
     }, [selectedRamadanDay]);
 
     const goToNextDay = useCallback(() => {
-        if (selectedRamadanDay < 30) {
+        if (selectedRamadanDay < clampedRamadanDay) {
             setSelectedRamadanDay(prev => prev + 1);
         }
-    }, [selectedRamadanDay]);
+    }, [selectedRamadanDay, clampedRamadanDay]);
 
     const goToDay = useCallback((day) => {
-        if (day >= 1 && day <= 30) {
+        if (day >= 1 && day <= clampedRamadanDay) {
             setSelectedRamadanDay(day);
         }
-    }, []);
+    }, [clampedRamadanDay]);
 
     const goToToday = useCallback(() => {
         // Use clamped day to ensure we don't go to negative day
@@ -1244,7 +1256,7 @@ export function AppProvider({ children }) {
         DEFAULT_ACTIVITIES,
         QURAN_SURAHS,
         TOTAL_AYAT,
-        RAMADAN_START,
+        RAMADAN_START: new Date(RAMADAN_START_STR + 'T00:00:00'),
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
