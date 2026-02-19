@@ -34,14 +34,13 @@ export default function AdminLeaderboard() {
     const [filterActivity, setFilterActivity] = useState('all'); // 'all' or specific activity id
     const [selectedUser, setSelectedUser] = useState(null);
 
-    // Current Ramadan day
+    // Current Ramadan day — starts at Maghrib (18:00) on Feb 18 2026
     const today = new Date();
-    const isAfterMaghrib = today.getHours() >= 18;
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const todayMidnight = new Date(todayStr + 'T00:00:00');
-    const ramadanStart = new Date(RAMADAN_START_STR + 'T00:00:00');
-    const daysSinceRamadan = Math.floor((todayMidnight - ramadanStart) / (1000 * 60 * 60 * 24));
-    const currentRamadanDay = Math.min(Math.max(daysSinceRamadan + 1 + (isAfterMaghrib ? 1 : 0), 1), 30);
+    const RAMADAN_MAGHRIB_START = new Date('2026-02-18T18:00:00');
+    const msSinceRamadan = today - RAMADAN_MAGHRIB_START;
+    const currentRamadanDay = Math.min(Math.max(
+        msSinceRamadan >= 0 ? Math.floor(msSinceRamadan / (1000 * 60 * 60 * 24)) + 1 : 0,
+        1), 30);
 
     // Track whether we're using optimized RPC or fallback
     const [useRpc, setUseRpc] = useState(null);

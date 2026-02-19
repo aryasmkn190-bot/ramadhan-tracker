@@ -52,14 +52,33 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
     const [customActivities, setCustomActivities] = useState([]);
     const [filterMode, setFilterMode] = useState('day');
     const [selectedDay, setSelectedDay] = useState(() => {
-        const today = new Date();
-        const isAfterMaghrib = today.getHours() >= 18;
-        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        const todayMidnight = new Date(todayStr + 'T00:00:00');
-        const ramadanStart = new Date(RAMADAN_START_STR + 'T00:00:00');
-        const ds = Math.floor((todayMidnight - ramadanStart) / (1000 * 60 * 60 * 24));
-        return Math.min(Math.max(ds + 1 + (isAfterMaghrib ? 1 : 0), 1), 30);
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const todayMid = new Date(todayStr + 'T00:00:00');
+        const ds = Math.floor((todayMid - new Date('2026-02-18T00:00:00')) / (1000 * 60 * 60 * 24));
+        return Math.min(Math.max(ds + 1, 1), 30);
     });
+
+    // maxSelectableDay: based on Gregorian date (not Maghrib)
+    const maxSelectableDay = (() => {
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const ds = Math.floor((new Date(todayStr + 'T00:00:00') - new Date('2026-02-18T00:00:00')) / (1000 * 60 * 60 * 24));
+        return Math.min(Math.max(ds + 1, 1), 30);
+    })();
+
+    // Helper: format Ramadan day number to short Gregorian date e.g. "18 Feb"
+    const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+    const formatRamadanDate = (day) => {
+        const dateStr = getDateForRamadanDay(day);
+        const [, month, d] = dateStr.split('-');
+        return `${parseInt(d)} ${MONTHS_ID[parseInt(month) - 1]}`;
+    };
+    const formatRamadanDateLong = (day) => {
+        const dateStr = getDateForRamadanDay(day);
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    };
 
     useEffect(() => {
         if (!user?.id) return;
@@ -403,25 +422,41 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                                             style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay <= 1 ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay <= 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>◀</button>
                                         <div style={{ flex: 1, textAlign: 'center' }}>
                                             <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)' }}>
-                                                {filterMode === 'day' ? `Ramadhan Hari ke-${selectedDay}` : `Hari ${Math.max(1, selectedDay - 6)} – ${selectedDay}`}
+                                                {filterMode === 'day'
+                                                    ? formatRamadanDate(selectedDay)
+                                                    : `${formatRamadanDate(Math.max(1, selectedDay - 6))} – ${formatRamadanDate(selectedDay)}`}
                                             </div>
                                             <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px' }}>
-                                                {filterMode === 'day' ? getDateForRamadanDay(selectedDay) : `${daysToInclude.length} hari`}
+                                                {filterMode === 'day' ? formatRamadanDateLong(selectedDay) : `${daysToInclude.length} hari`}
                                             </div>
                                         </div>
-                                        <button onClick={() => setSelectedDay(d => Math.min(30, d + 1))} disabled={selectedDay >= 30}
-                                            style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay >= 30 ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay >= 30 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</button>
+                                        <button onClick={() => setSelectedDay(d => Math.min(maxSelectableDay, d + 1))} disabled={selectedDay >= maxSelectableDay}
+                                            style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: '1px solid var(--dark-600)', borderRadius: 'var(--radius-md)', color: selectedDay >= maxSelectableDay ? 'var(--dark-600)' : 'white', fontSize: '16px', cursor: selectedDay >= maxSelectableDay ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▶</button>
                                     </div>
                                     <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
-                                        {Array.from({ length: 30 }, (_, i) => i + 1).map(day => (
-                                            <button key={day} onClick={() => setSelectedDay(day)} style={{
-                                                minWidth: '36px', height: '32px',
-                                                background: selectedDay === day ? 'var(--primary)' : (filterMode === '7days' && daysToInclude.includes(day)) ? 'rgba(59, 130, 246, 0.2)' : 'var(--dark-800)',
-                                                color: selectedDay === day ? 'white' : (filterMode === '7days' && daysToInclude.includes(day)) ? 'var(--primary)' : 'var(--dark-400)',
-                                                border: selectedDay === day ? 'none' : '1px solid var(--dark-700)', borderRadius: 'var(--radius-full)',
-                                                fontSize: '12px', fontWeight: selectedDay === day ? '700' : '500', cursor: 'pointer', flexShrink: 0,
-                                            }}>{day}</button>
-                                        ))}
+                                        {Array.from({ length: 30 }, (_, i) => i + 1).map(day => {
+                                            const isFuture = day > maxSelectableDay;
+                                            return (
+                                                <button key={day}
+                                                    onClick={() => !isFuture && setSelectedDay(day)}
+                                                    disabled={isFuture}
+                                                    style={{
+                                                        minWidth: '36px', height: '32px',
+                                                        background: selectedDay === day ? 'var(--primary)'
+                                                            : isFuture ? 'var(--dark-900)'
+                                                                : (filterMode === '7days' && daysToInclude.includes(day)) ? 'rgba(59, 130, 246, 0.2)'
+                                                                    : 'var(--dark-800)',
+                                                        color: selectedDay === day ? 'white'
+                                                            : isFuture ? 'var(--dark-700)'
+                                                                : (filterMode === '7days' && daysToInclude.includes(day)) ? 'var(--primary)'
+                                                                    : 'var(--dark-400)',
+                                                        border: selectedDay === day ? 'none' : isFuture ? '1px solid var(--dark-800)' : '1px solid var(--dark-700)',
+                                                        borderRadius: 'var(--radius-full)',
+                                                        fontSize: '12px', fontWeight: selectedDay === day ? '700' : '500',
+                                                        cursor: isFuture ? 'not-allowed' : 'pointer', flexShrink: 0,
+                                                    }}>{day}</button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -442,7 +477,9 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
                                         <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Rata-rata/Hari</div>
                                     </div>
                                     <div style={{ background: 'var(--dark-800)', padding: '14px', borderRadius: 'var(--radius-lg)' }}>
-                                        <div style={{ fontSize: '26px', fontWeight: '700', color: '#ec4899' }}>{stats.bestDay > 0 ? `H${stats.bestDay}` : '-'}</div>
+                                        <div style={{ fontSize: '22px', fontWeight: '700', color: '#ec4899' }}>
+                                            {stats.bestDay > 0 ? formatRamadanDate(stats.bestDay) : '-'}
+                                        </div>
                                         <div style={{ fontSize: '11px', color: 'var(--dark-400)' }}>Hari Terbaik</div>
                                     </div>
                                 </>)}

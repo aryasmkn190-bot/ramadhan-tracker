@@ -71,14 +71,10 @@ export default function Header() {
         headerSubtitle = `${currentRamadanDay} Ramadhan 1447 H`;
         dayBadge = `Hari ke-${currentRamadanDay}`;
     } else {
-        // Countdown to Ramadan — Maghrib on Feb 17 = Ramadan starts
-        const ramadanStart = new Date('2026-02-18T00:00:00');
-        const todayReset = new Date(today);
-        todayReset.setHours(0, 0, 0, 0);
-        const diffTime = ramadanStart - todayReset;
-        let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        // After Maghrib, countdown reduces by 1 (closer to Ramadan)
-        if (today.getHours() >= 18) diffDays -= 1;
+        // Countdown to Maghrib Feb 18, 2026 (actual Ramadan start)
+        const ramadanMaghrib = new Date('2026-02-18T18:00:00');
+        const diffMs = ramadanMaghrib - today;
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
         if (diffDays > 0) {
             headerSubtitle = `${diffDays} hari menuju Ramadhan`;
             dayBadge = `H-${diffDays}`;
@@ -174,48 +170,8 @@ export default function Header() {
                         </div>
                     </div>
 
-                    {/* Right: Clock + Avatar + Badge */}
+                    {/* Right: Avatar + Badge */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                        {/* Digital Clock WIB */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                        }}>
-                            <div style={{
-                                fontFamily: "'Outfit', monospace",
-                                fontSize: '18px',
-                                fontWeight: '700',
-                                color: 'white',
-                                letterSpacing: '1px',
-                                lineHeight: '1.1',
-                                textShadow: '0 0 12px rgba(255,255,255,0.25)',
-                            }}>
-                                {clock}<span style={{
-                                    fontSize: '12px',
-                                    fontWeight: '500',
-                                    opacity: 0.7,
-                                    marginLeft: '2px',
-                                }}>{seconds}</span>
-                            </div>
-                            <span style={{
-                                fontSize: '8px',
-                                fontWeight: '600',
-                                color: 'rgba(255,255,255,0.55)',
-                                letterSpacing: '2px',
-                                textTransform: 'uppercase',
-                                marginTop: '1px',
-                            }}>WIB</span>
-                        </div>
-
-                        {/* Separator */}
-                        <div style={{
-                            width: '1px',
-                            height: '28px',
-                            background: 'rgba(255,255,255,0.2)',
-                            borderRadius: '1px',
-                        }} />
-
                         {/* Avatar with dropdown */}
                         {user && (
                             <div ref={dropdownRef} style={{ position: 'relative' }}>
@@ -387,19 +343,47 @@ export default function Header() {
                     </div>
                 </div>
 
-                {/* Subtitle row */}
+                {/* Subtitle row + Clock */}
                 <div style={{
-                    marginTop: '6px',
+                    marginTop: '8px',
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'space-between',
                     gap: '8px',
-                    paddingLeft: '42px',
+                    paddingLeft: '46px',
                 }}>
                     <span style={{
-                        fontSize: '11px',
-                        color: 'rgba(255,255,255,0.7)',
-                        fontWeight: '500',
+                        fontSize: '15px',
+                        color: 'rgba(255,255,255,0.9)',
+                        fontWeight: '700',
+                        letterSpacing: '-0.2px',
                     }}>{headerSubtitle}</span>
+
+                    <div style={{
+                        fontFamily: "'Outfit', monospace",
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: 'rgba(255,255,255,0.9)',
+                        letterSpacing: '0.5px',
+                        lineHeight: '1.2',
+                        display: 'flex',
+                        alignItems: 'baseline',
+                    }}>
+                        {clock}<span style={{
+                            fontSize: '10px',
+                            fontWeight: '500',
+                            opacity: 0.8,
+                            marginLeft: '2px',
+                        }}>{seconds}</span>
+                        <span style={{
+                            fontSize: '9px',
+                            fontWeight: '600',
+                            color: 'rgba(255,255,255,0.6)',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            marginLeft: '4px',
+                        }}>WIB</span>
+                    </div>
                 </div>
 
 

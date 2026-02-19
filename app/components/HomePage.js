@@ -26,6 +26,7 @@ export default function HomePage() {
         getAddedCustomActivitiesForDay,
         announcements,
         activityCategories,
+        getDateForRamadanDay,
     } = useApp();
 
     // Build CATEGORY_INFO map from dynamic categories
@@ -611,7 +612,12 @@ export default function HomePage() {
                         <div className="modal-handle" />
 
                         <div className="modal-header">
-                            <h2 className="modal-title">Tambah Aktivitas — Hari {selectedRamadanDay}</h2>
+                            <h2 className="modal-title">Tambah Aktivitas — {(() => {
+                                const dateStr = getDateForRamadanDay(selectedRamadanDay);
+                                const [, month, day] = dateStr.split('-');
+                                const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+                                return `${parseInt(day)} ${MONTHS[parseInt(month) - 1]}`;
+                            })()}</h2>
                             <button
                                 className="modal-close"
                                 onClick={() => setShowActivityPicker(false)}

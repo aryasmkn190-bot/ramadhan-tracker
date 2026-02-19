@@ -108,20 +108,27 @@ export function AppProvider({ children }) {
     const [selectedRamadanDay, setSelectedRamadanDay] = useState(1);
 
     const today = new Date();
-    const currentHour = today.getHours();
-    const isAfterMaghrib = currentHour >= 18;
-    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    // Normalize both dates to local midnight to avoid UTC offset issues
-    const todayMidnight = new Date(todayString + 'T00:00:00');
-    const ramadanStart = new Date(RAMADAN_START_STR + 'T00:00:00');
-    const daysSinceRamadan = Math.floor((todayMidnight - ramadanStart) / (1000 * 60 * 60 * 24));
-    // Real current day — after Maghrib (18:00), advance to next day per Islamic calendar
-    const currentRamadanDay = daysSinceRamadan + 1 + (isAfterMaghrib ? 1 : 0);
+    // Ramadhan starts at Maghrib (18:00) on Feb 18, 2026
+    // currentRamadanDay: Hijri day for display (switches at Maghrib)
+    const RAMADAN_MAGHRIB_START = new Date('2026-02-18T18:00:00');
+    const msSinceRamadan = today - RAMADAN_MAGHRIB_START;
+    const currentRamadanDay = msSinceRamadan >= 0
+        ? Math.floor(msSinceRamadan / (1000 * 60 * 60 * 24)) + 1
+        : 0;
     // Clamped for UI defaults (1-30)
     const clampedRamadanDay = Math.min(Math.max(currentRamadanDay, 1), 30);
+    // todayString for activity date lookup (uses Gregorian calendar date)
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // maxSelectableDay: based on Gregorian date — users can fill any day up to today
+    // even before Maghrib, Feb 19 = day 2 is already accessible
+    const ramadanFirstDayMidnight = new Date('2026-02-18T00:00:00');
+    const todayMidnight = new Date(todayString + 'T00:00:00');
+    const daysSinceGregorian = Math.floor((todayMidnight - ramadanFirstDayMidnight) / (1000 * 60 * 60 * 24));
+    const maxSelectableDay = Math.min(Math.max(daysSinceGregorian + 1, 1), 30);
 
     const selectedDateString = getDateForRamadanDay(selectedRamadanDay);
-    const isSelectedDayToday = selectedRamadanDay === currentRamadanDay;
+    const isSelectedDayToday = selectedRamadanDay === maxSelectableDay;
 
     // Initialize selected day (client-side only)
     useEffect(() => {
@@ -1177,21 +1184,20 @@ export function AppProvider({ children }) {
     }, [selectedRamadanDay]);
 
     const goToNextDay = useCallback(() => {
-        if (selectedRamadanDay < clampedRamadanDay) {
+        if (selectedRamadanDay < maxSelectableDay) {
             setSelectedRamadanDay(prev => prev + 1);
         }
-    }, [selectedRamadanDay, clampedRamadanDay]);
+    }, [selectedRamadanDay, maxSelectableDay]);
 
     const goToDay = useCallback((day) => {
-        if (day >= 1 && day <= clampedRamadanDay) {
+        if (day >= 1 && day <= maxSelectableDay) {
             setSelectedRamadanDay(day);
         }
-    }, [clampedRamadanDay]);
+    }, [maxSelectableDay]);
 
     const goToToday = useCallback(() => {
-        // Use clamped day to ensure we don't go to negative day
-        setSelectedRamadanDay(clampedRamadanDay);
-    }, [clampedRamadanDay]);
+        setSelectedRamadanDay(maxSelectableDay);
+    }, [maxSelectableDay]);
 
     const value = {
         // State
@@ -1203,6 +1209,7 @@ export function AppProvider({ children }) {
         toasts,
         isLoading,
         currentRamadanDay,
+        maxSelectableDay,
         selectedRamadanDay,
         selectedDateString,
         isSelectedDayToday,

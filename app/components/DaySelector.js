@@ -9,6 +9,7 @@ const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'S
 export default function DaySelector() {
   const {
     currentRamadanDay,
+    maxSelectableDay,
     selectedRamadanDay,
     isSelectedDayToday,
     goToPreviousDay,
@@ -84,7 +85,7 @@ export default function DaySelector() {
         <button
           className="day-nav-btn"
           onClick={goToNextDay}
-          disabled={selectedRamadanDay >= currentRamadanDay || selectedRamadanDay >= 30}
+          disabled={selectedRamadanDay >= maxSelectableDay || selectedRamadanDay >= 30}
           aria-label="Next day"
         >
           ›
@@ -129,8 +130,8 @@ export default function DaySelector() {
             {availableDays.map(day => {
               const status = getDayStatus(day);
               const isSelected = day === selectedRamadanDay;
-              const isToday = day === currentRamadanDay;
-              const isFuture = day > currentRamadanDay;
+              const isToday = day === maxSelectableDay;
+              const isFuture = day > maxSelectableDay;
               const dateInfo = formatDate(day);
 
               return (
