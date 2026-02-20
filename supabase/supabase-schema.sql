@@ -15,6 +15,8 @@ CREATE TABLE profiles (
   full_name TEXT NOT NULL,
   avatar_url TEXT,
   role TEXT DEFAULT 'member' CHECK (role IN ('member', 'admin')),
+  user_group TEXT,
+  managed_groups JSONB DEFAULT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

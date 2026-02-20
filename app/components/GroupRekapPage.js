@@ -22,6 +22,25 @@ const getDateForRamadanDay = (day) => {
 export default function GroupRekapPage() {
     const { profile } = useAuth();
     const userGroup = profile?.user_group;
+    const managedGroups = profile?.managed_groups;
+
+    // Determine available groups for this group admin
+    const availableGroups = useMemo(() => {
+        if (managedGroups && Array.isArray(managedGroups) && managedGroups.length > 0) {
+            return managedGroups;
+        }
+        return userGroup ? [userGroup] : [];
+    }, [managedGroups, userGroup]);
+
+    // Currently selected group to view
+    const [selectedGroup, setSelectedGroup] = useState(null);
+
+    // Initialize selectedGroup when availableGroups loads
+    useEffect(() => {
+        if (availableGroups.length > 0 && !selectedGroup) {
+            setSelectedGroup(availableGroups[0]);
+        }
+    }, [availableGroups]);
 
     const [profiles, setProfiles] = useState([]);
     const [allActivities, setAllActivities] = useState([]);
@@ -46,11 +65,33 @@ export default function GroupRekapPage() {
         1), 30);
 
     useEffect(() => {
-        fetchGroupData();
-    }, [userGroup]);
+        if (selectedGroup) {
+            fetchGroupData(selectedGroup);
+        }
+    }, [selectedGroup]);
 
-    const fetchGroupData = async () => {
-        if (!isSupabaseConfigured() || !userGroup) return;
+    // Helper: fetch ALL rows with pagination (Supabase default limit is 1000)
+    // Uses a factory function to create a FRESH query builder for each page
+    // (Supabase query builders can't be reliably re-awaited after first execution)
+    const fetchPaginated = async (buildQuery) => {
+        const PAGE_SIZE = 1000;
+        let allData = [];
+        let from = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+            const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+            if (error || !data || data.length === 0) break;
+            allData = [...allData, ...data];
+            if (data.length < PAGE_SIZE) hasMore = false;
+            from += PAGE_SIZE;
+        }
+
+        return allData;
+    };
+
+    const fetchGroupData = async (groupToFetch) => {
+        if (!isSupabaseConfigured() || !groupToFetch) return;
 
         // Clear old data immediately to prevent stale data flash
         setLoading(true);
@@ -67,27 +108,31 @@ export default function GroupRekapPage() {
             const profilesRes = await supabase
                 .from('profiles')
                 .select('id, full_name, user_group, role, email')
-                .eq('user_group', userGroup);
+                .eq('user_group', groupToFetch);
 
             const groupProfiles = profilesRes.data || [];
 
-            // Step 2: Fetch only activities & quran data for group members (server-side filter)
+            // Step 2: Fetch only activities & quran data for group members with pagination
             const memberIds = groupProfiles.map(p => p.id);
 
             if (memberIds.length > 0) {
-                const [activitiesRes, quranRes] = await Promise.all([
-                    supabase.from('daily_activities')
-                        .select('user_id, activity_date, activity_id, completed, start_time, end_time')
-                        .in('user_id', memberIds),
-                    supabase.from('quran_readings')
-                        .select('user_id, read_date, surah_number, start_ayat, end_ayat')
-                        .in('user_id', memberIds),
+                const [activitiesData, quranDataResult] = await Promise.all([
+                    fetchPaginated(() =>
+                        supabase.from('daily_activities')
+                            .select('user_id, activity_date, activity_id, completed, start_time, end_time')
+                            .in('user_id', memberIds)
+                    ),
+                    fetchPaginated(() =>
+                        supabase.from('quran_readings')
+                            .select('user_id, read_date, surah_number, start_ayat, end_ayat')
+                            .in('user_id', memberIds)
+                    ),
                 ]);
 
                 // Set all data at once to avoid partial renders
                 setProfiles(groupProfiles);
-                if (activitiesRes.data) setAllActivities(activitiesRes.data);
-                if (quranRes.data) setQuranData(quranRes.data);
+                setAllActivities(activitiesData);
+                setQuranData(quranDataResult);
             } else {
                 setProfiles(groupProfiles);
                 setAllActivities([]);
@@ -297,13 +342,13 @@ export default function GroupRekapPage() {
             if (!userStats[a.user_id]) return;
             const baseId = a.activity_id.replace('__spillover', '');
             const sc = getSessionCount(a);
-            if (SHOLAT_IDS.includes(a.activity_id)) {
+            if (SHOLAT_IDS.includes(baseId)) {
                 userStats[a.user_id].sholat += sc;
-            } else if (SUNNAH_IDS.includes(a.activity_id)) {
+            } else if (SUNNAH_IDS.includes(baseId)) {
                 userStats[a.user_id].sunnah += sc;
-            } else if (AKTIVITAS_IDS.includes(a.activity_id)) {
+            } else if (AKTIVITAS_IDS.includes(baseId)) {
                 userStats[a.user_id].aktivitas += sc;
-            } else if (amanahIds.has(a.activity_id)) {
+            } else if (amanahIds.has(baseId)) {
                 userStats[a.user_id].amanah += sc;
             } else {
                 userStats[a.user_id].custom += sc;
@@ -406,11 +451,11 @@ export default function GroupRekapPage() {
     // Pagination
     const pagination = usePagination(filteredRankedUsers);
 
-    const gc = GROUP_COLORS[userGroup] || { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.3)', text: '#818cf8' };
+    const gc = GROUP_COLORS[selectedGroup] || { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.3)', text: '#818cf8' };
 
-    if (!userGroup) {
+    if (availableGroups.length === 0) {
         return (
-            <section className="page-container" style={{ padding: '16px', paddingBottom: '100px' }}>
+            <section className="main-content" style={{ paddingBottom: '100px' }}>
                 <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--dark-400)' }}>
                     <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5 }}>⚠️</div>
                     <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>Grup belum diatur</div>
@@ -421,7 +466,7 @@ export default function GroupRekapPage() {
     }
 
     return (
-        <section className="page-container" style={{ padding: '16px', paddingBottom: '100px' }}>
+        <section className="main-content" style={{ paddingBottom: '100px' }}>
             {/* Header */}
             <div style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
@@ -435,7 +480,7 @@ export default function GroupRekapPage() {
                                 fontSize: '11px', fontWeight: '600', padding: '3px 10px',
                                 borderRadius: 'var(--radius-full)',
                                 background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text,
-                            }}>{userGroup}</span>
+                            }}>{selectedGroup}</span>
                             <span style={{ fontSize: '12px', color: 'var(--dark-400)' }}>
                                 {groupStats.totalMembers} anggota
                             </span>
@@ -443,6 +488,46 @@ export default function GroupRekapPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Group Switcher - only show when multiple groups are available */}
+            {availableGroups.length > 1 && (
+                <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--dark-400)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        🛡️ Pilih Grup
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
+                        {availableGroups.map(group => {
+                            const groupColor = GROUP_COLORS[group] || { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.3)', text: '#818cf8' };
+                            const isActive = selectedGroup === group;
+                            const shortLabel = group
+                                .replace('PTO HOLDING ', 'HOLD ')
+                                .replace('PTO CENTRAL', 'CENTRAL')
+                                .replace('PTO ', 'PTO ');
+                            return (
+                                <button
+                                    key={group}
+                                    onClick={() => setSelectedGroup(group)}
+                                    style={{
+                                        padding: '8px 14px',
+                                        background: isActive ? groupColor.bg : 'var(--dark-800)',
+                                        border: isActive ? `2px solid ${groupColor.border}` : '1px solid var(--dark-700)',
+                                        borderRadius: 'var(--radius-full)',
+                                        color: isActive ? groupColor.text : 'var(--dark-400)',
+                                        fontWeight: '600',
+                                        fontSize: '11px',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        transition: 'all 0.2s ease',
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    {isActive && '✓ '}{shortLabel}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Stats Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>

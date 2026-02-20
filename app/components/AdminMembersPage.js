@@ -33,6 +33,12 @@ export default function AdminMembersPage() {
     const [editEmail, setEditEmail] = useState('');
     const [editGroup, setEditGroup] = useState('');
     const [editRole, setEditRole] = useState('member');
+    const [editManagedGroups, setEditManagedGroups] = useState([]);
+
+    // Password change
+    const [editPassword, setEditPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [changingPassword, setChangingPassword] = useState(false);
 
     // Import
     const [importText, setImportText] = useState('');
@@ -97,7 +103,21 @@ export default function AdminMembersPage() {
         setEditEmail(member.email || '');
         setEditGroup(member.user_group || '');
         setEditRole(member.role || 'member');
+        setEditManagedGroups(member.managed_groups || []);
+        setEditPassword('');
+        setShowPassword(false);
         setShowEditModal(true);
+    };
+
+    // Toggle a group in managed_groups
+    const toggleManagedGroup = (group) => {
+        setEditManagedGroups(prev => {
+            if (prev.includes(group)) {
+                return prev.filter(g => g !== group);
+            } else {
+                return [...prev, group];
+            }
+        });
     };
 
     const handleSaveEdit = async () => {
@@ -107,6 +127,7 @@ export default function AdminMembersPage() {
                 full_name: editName,
                 user_group: editGroup || null,
                 role: editRole,
+                managed_groups: editRole === 'group_admin' ? editManagedGroups : null,
             };
             console.log('Updating profile:', editingMember.id, updateData);
 
@@ -132,7 +153,7 @@ export default function AdminMembersPage() {
 
             setMembers(prev => prev.map(m =>
                 m.id === editingMember.id
-                    ? { ...m, full_name: editName, user_group: editGroup || null, role: editRole }
+                    ? { ...m, full_name: editName, user_group: editGroup || null, role: editRole, managed_groups: editRole === 'group_admin' ? editManagedGroups : null }
                     : m
             ));
 
@@ -143,6 +164,47 @@ export default function AdminMembersPage() {
             const msg = error?.message || error?.toString() || 'Unknown error';
             console.error('Error updating member:', msg, error);
             addToast(`❌ Gagal memperbarui data: ${msg}`, 'error');
+        }
+    };
+
+    // Change user password (admin only)
+    const handleChangePassword = async () => {
+        if (!editingMember || !editPassword) return;
+        if (editPassword.length < 6) {
+            addToast('❌ Password minimal 6 karakter', 'error');
+            return;
+        }
+
+        setChangingPassword(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            const response = await fetch('/api/update-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token}`,
+                },
+                body: JSON.stringify({
+                    targetUserId: editingMember.id,
+                    newPassword: editPassword,
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Gagal mengubah password');
+            }
+
+            addToast(`🔑 Password ${editingMember.full_name} berhasil diubah`, 'success');
+            setEditPassword('');
+            setShowPassword(false);
+        } catch (error) {
+            console.error('Error changing password:', error);
+            addToast(`❌ Gagal mengubah password: ${error.message}`, 'error');
+        } finally {
+            setChangingPassword(false);
         }
     };
 
@@ -1069,6 +1131,52 @@ export default function AdminMembersPage() {
                                 </div>
                             </div>
 
+                            {/* Managed Groups - only visible for group_admin */}
+                            {editRole === 'group_admin' && (
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--dark-300)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        🛡️ Grup yang Dikelola
+                                    </label>
+                                    <div style={{ fontSize: '10px', color: 'var(--dark-500)', marginBottom: '8px' }}>
+                                        Pilih grup yang bisa direkap oleh group admin ini
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                        {USER_GROUPS.map(group => {
+                                            const colors = GROUP_COLORS[group];
+                                            const isSelected = editManagedGroups.includes(group);
+                                            const shortLabel = group
+                                                .replace('PTO HOLDING ', 'HOLD ')
+                                                .replace('PTO CENTRAL', 'CENTRAL')
+                                                .replace('PTO ', 'PTO ');
+                                            return (
+                                                <button
+                                                    key={group}
+                                                    onClick={() => toggleManagedGroup(group)}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        background: isSelected ? colors.bg : 'var(--dark-700)',
+                                                        border: isSelected ? `2px solid ${colors.border}` : '2px solid var(--dark-600)',
+                                                        borderRadius: 'var(--radius-full)',
+                                                        color: isSelected ? colors.text : 'var(--dark-400)',
+                                                        fontWeight: '600',
+                                                        fontSize: '10px',
+                                                        cursor: 'pointer',
+                                                        position: 'relative',
+                                                    }}
+                                                >
+                                                    {isSelected && '✓ '}{shortLabel}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {editManagedGroups.length > 0 && (
+                                        <div style={{ fontSize: '10px', color: '#a78bfa', marginTop: '6px' }}>
+                                            ✅ {editManagedGroups.length} grup dipilih: {editManagedGroups.join(', ')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <button
                                 onClick={handleSaveEdit}
                                 className="btn btn-primary"
@@ -1077,6 +1185,84 @@ export default function AdminMembersPage() {
                                 <span>💾</span>
                                 <span>Simpan Perubahan</span>
                             </button>
+
+                            {/* Password Change Section */}
+                            <div style={{
+                                marginTop: '16px',
+                                paddingTop: '16px',
+                                borderTop: '1px solid var(--dark-600)',
+                            }}>
+                                <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--dark-300)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    🔑 Ubah Password
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ flex: 1, position: 'relative' }}>
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            value={editPassword}
+                                            onChange={e => setEditPassword(e.target.value)}
+                                            placeholder="Password baru (min. 6 karakter)"
+                                            style={{
+                                                width: '100%',
+                                                padding: '10px 40px 10px 14px',
+                                                background: 'var(--dark-700)',
+                                                border: '2px solid var(--dark-600)',
+                                                borderRadius: 'var(--radius-md)',
+                                                color: 'var(--dark-100)',
+                                                fontSize: '14px',
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '8px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                background: 'none',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                fontSize: '16px',
+                                                padding: '4px',
+                                            }}
+                                        >
+                                            {showPassword ? '🙈' : '👁️'}
+                                        </button>
+                                    </div>
+                                    <button
+                                        onClick={handleChangePassword}
+                                        disabled={!editPassword || editPassword.length < 6 || changingPassword}
+                                        style={{
+                                            padding: '10px 16px',
+                                            background: editPassword && editPassword.length >= 6 && !changingPassword
+                                                ? 'rgba(251, 191, 36, 0.15)'
+                                                : 'var(--dark-700)',
+                                            border: editPassword && editPassword.length >= 6 && !changingPassword
+                                                ? '2px solid rgba(251, 191, 36, 0.3)'
+                                                : '2px solid var(--dark-600)',
+                                            borderRadius: 'var(--radius-md)',
+                                            color: editPassword && editPassword.length >= 6 && !changingPassword
+                                                ? '#fbbf24'
+                                                : 'var(--dark-500)',
+                                            fontWeight: '600',
+                                            fontSize: '12px',
+                                            cursor: editPassword && editPassword.length >= 6 && !changingPassword
+                                                ? 'pointer'
+                                                : 'not-allowed',
+                                            whiteSpace: 'nowrap',
+                                            opacity: changingPassword ? 0.7 : 1,
+                                        }}
+                                    >
+                                        {changingPassword ? '⏳' : '🔑'} Ubah
+                                    </button>
+                                </div>
+                                {editPassword && editPassword.length < 6 && (
+                                    <div style={{ fontSize: '10px', color: '#f87171', marginTop: '4px' }}>
+                                        ⚠️ Password minimal 6 karakter
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

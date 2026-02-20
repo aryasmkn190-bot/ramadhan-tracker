@@ -49,6 +49,29 @@ export default function AdminLeaderboard() {
         fetchAllData();
     }, []);
 
+    // Helper: fetch ALL rows from a table, paginating past Supabase's default 1000-row limit
+    const fetchAllRows = async (table, selectFields, filters = {}) => {
+        const PAGE_SIZE = 1000;
+        let allData = [];
+        let from = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+            let query = supabase.from(table).select(selectFields).range(from, from + PAGE_SIZE - 1);
+            // Apply filters
+            Object.entries(filters).forEach(([key, value]) => {
+                query = query.eq(key, value);
+            });
+            const { data, error } = await query;
+            if (error || !data || data.length === 0) break;
+            allData = [...allData, ...data];
+            if (data.length < PAGE_SIZE) hasMore = false;
+            from += PAGE_SIZE;
+        }
+
+        return allData;
+    };
+
     const fetchAllData = async () => {
         if (!isSupabaseConfigured()) return;
         setLoading(true);
@@ -72,32 +95,35 @@ export default function AdminLeaderboard() {
                 }));
                 setProfiles(mappedProfiles);
 
-                // Store RPC data for rankedUsers computation
-                // We need to handle date filtering differently with RPC
                 setUseRpc(true);
 
-                // For "all" filter mode (default), we can use RPC data directly
-                // For date-filtered views, we'll re-call RPC with date params
-                // Still fetch activities for idle hours calculation (needs start_time/end_time)
-                const actRes = await supabase
-                    .from('daily_activities')
-                    .select('user_id, activity_date, activity_id, activity_name, completed, start_time, end_time');
-                if (actRes.data) setAllActivities(actRes.data);
+                // Fetch ALL activities with pagination (Supabase default limit is 1000)
+                const actData = await fetchAllRows(
+                    'daily_activities',
+                    'user_id, activity_date, activity_id, activity_name, completed, start_time, end_time'
+                );
+                setAllActivities(actData);
                 setQuranData([]); // Not needed when using RPC
             } else {
                 // Fallback to original queries if RPC not available
                 console.warn('Leaderboard RPC not available, using fallback:', rpcError?.message);
                 setUseRpc(false);
 
-                const [profilesRes, activitiesRes, quranRes] = await Promise.all([
+                const [profilesRes, actData, quranRes] = await Promise.all([
                     supabase.from('profiles').select('id, full_name, user_group, role, email'),
-                    supabase.from('daily_activities').select('user_id, activity_date, activity_id, activity_name, completed, start_time, end_time'),
-                    supabase.from('quran_readings').select('user_id, read_date, surah_number, start_ayat, end_ayat'),
+                    fetchAllRows(
+                        'daily_activities',
+                        'user_id, activity_date, activity_id, activity_name, completed, start_time, end_time'
+                    ),
+                    fetchAllRows(
+                        'quran_readings',
+                        'user_id, read_date, surah_number, start_ayat, end_ayat'
+                    ),
                 ]);
 
                 if (profilesRes.data) setProfiles(profilesRes.data);
-                if (activitiesRes.data) setAllActivities(activitiesRes.data);
-                if (quranRes.data) setQuranData(quranRes.data);
+                setAllActivities(actData);
+                setQuranData(quranRes);
             }
         } catch (error) {
             console.error('Error fetching admin leaderboard data:', error);
@@ -472,45 +498,97 @@ export default function AdminLeaderboard() {
             };
         };
 
-        // RPC mode: data is already aggregated by the database
+        // RPC mode: use profiles from RPC but compute activity counts client-side
+        // This ensures session-aware counting
         if (useRpc === true && rpcLeaderboardData.length > 0) {
-            let users = rpcLeaderboardData.map(r => {
-                const total = Number(r.total) || 0;
-                const extra = computeExtraMetrics(r.user_id);
-                const user = {
+            // Client-side aggregation (same as fallback mode but using RPC profiles)
+            const relevantActivities = allActivities.filter(a =>
+                a.completed && filteredDates.includes(a.activity_date)
+            );
+
+            const userStats = {};
+            const userDateActivities = {};
+
+            rpcLeaderboardData.forEach(r => {
+                userStats[r.user_id] = {
                     id: r.user_id,
                     full_name: r.full_name,
                     user_group: r.user_group,
                     email: r.email,
                     role: r.role,
-                    sholat: Number(r.sholat) || 0,
-                    sunnah: Number(r.sunnah) || 0,
-                    aktivitas: Number(r.aktivitas) || 0,
-                    custom: Number(r.custom) || 0,
-                    amanah: Number(r.amanah) || 0,
-                    total,
+                    sholat: 0, sunnah: 0, aktivitas: 0, custom: 0, amanah: 0, total: 0,
                     quran_ayat: Number(r.quran_ayat) || Number(r.quran_sessions) || 0,
-                    idle_hours: computeUserIdleHours(r.user_id),
-                    activityCount: 0,
-                    activityHours: 0,
-                    ...extra,
+                    idle_hours: 0,
+                    activityCount: 0, activityHours: 0,
+                    tidur_count: 0, tidur_hours: 0, amanah_hours: 0, hiburan_count: 0,
                     produktif_score: 0,
                 };
-                // Count specific activity if filtered
-                if (filterActivity !== 'all') {
-                    const result = countUserActivity(r.user_id, filterActivity);
-                    user.activityCount = result.count;
-                    user.activityHours = result.hours;
-                }
-                return user;
             });
+
+            relevantActivities.forEach(a => {
+                if (!userStats[a.user_id]) return;
+                const baseId = a.activity_id.replace('__spillover', '');
+                const sc = getSessionCount(a);
+
+                if (SHOLAT_IDS.includes(baseId)) {
+                    userStats[a.user_id].sholat += sc;
+                } else if (SUNNAH_IDS.includes(baseId)) {
+                    userStats[a.user_id].sunnah += sc;
+                } else if (AKTIVITAS_IDS.includes(baseId)) {
+                    userStats[a.user_id].aktivitas += sc;
+                } else if (amanahIds.has(baseId)) {
+                    userStats[a.user_id].amanah += sc;
+                } else {
+                    userStats[a.user_id].custom += sc;
+                }
+                userStats[a.user_id].total += sc;
+
+                if (tidurIds.has(baseId)) {
+                    userStats[a.user_id].tidur_count += sc;
+                    userStats[a.user_id].tidur_hours += computeActivityHours(a);
+                }
+                if (amanahIds.has(baseId)) {
+                    userStats[a.user_id].amanah_hours += computeActivityHours(a);
+                }
+                if (hiburanIds.has(baseId)) {
+                    userStats[a.user_id].hiburan_count += sc;
+                }
+
+                if (filterActivity !== 'all' && baseId === filterActivity) {
+                    userStats[a.user_id].activityCount += sc;
+                    userStats[a.user_id].activityHours += computeActivityHours(a);
+                }
+
+                const key = `${a.user_id}_${a.activity_date}`;
+                if (!userDateActivities[key]) userDateActivities[key] = [];
+                userDateActivities[key].push(a);
+            });
+
+            // Calculate idle hours
+            Object.keys(userStats).forEach(uid => {
+                let totalIdle = 0;
+                filteredDates.forEach(date => {
+                    const key = `${uid}_${date}`;
+                    const dayActs = userDateActivities[key] || [];
+                    totalIdle += calcIdleHours(dayActs);
+                });
+                userStats[uid].idle_hours = Math.round(totalIdle);
+                userStats[uid].activityHours = Math.round(userStats[uid].activityHours * 10) / 10;
+                userStats[uid].tidur_hours = Math.round(userStats[uid].tidur_hours * 10) / 10;
+                userStats[uid].amanah_hours = Math.round(userStats[uid].amanah_hours * 10) / 10;
+            });
+
+            let users = Object.values(userStats);
+            if (selectedGroup !== 'all') {
+                users = users.filter(u => u.user_group === selectedGroup);
+            }
 
             // Calculate productivity scores
             if (rankBy === 'produktif') {
                 calculateProductivityScores(users);
             }
 
-            // Sort client-side
+            // Sort
             if (filterActivity !== 'all') {
                 users.sort((a, b) => b.activityCount - a.activityCount || b.total - a.total);
             } else {
@@ -568,13 +646,13 @@ export default function AdminLeaderboard() {
 
             const sc = getSessionCount(a);
 
-            if (SHOLAT_IDS.includes(a.activity_id)) {
+            if (SHOLAT_IDS.includes(baseId)) {
                 userStats[a.user_id].sholat += sc;
-            } else if (SUNNAH_IDS.includes(a.activity_id)) {
+            } else if (SUNNAH_IDS.includes(baseId)) {
                 userStats[a.user_id].sunnah += sc;
-            } else if (AKTIVITAS_IDS.includes(a.activity_id)) {
+            } else if (AKTIVITAS_IDS.includes(baseId)) {
                 userStats[a.user_id].aktivitas += sc;
-            } else if (amanahIds.has(a.activity_id)) {
+            } else if (amanahIds.has(baseId)) {
                 userStats[a.user_id].amanah += sc;
             } else {
                 userStats[a.user_id].custom += sc;

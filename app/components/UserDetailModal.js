@@ -215,8 +215,16 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
             return sum + (d?.completed ? getSessionCount(d) : 0);
         }, 0);
 
+        // Count spillover activities (overnight from previous day)
+        const spillover = Object.entries(dayActs).reduce((sum, [key, data]) => {
+            if (key.endsWith('__spillover') && data?.completed) {
+                return sum + getSessionCount(data);
+            }
+            return sum;
+        }, 0);
+
         // total uses session count (for "Total Selesai" display)
-        const total = pc + sc + ac + cc;
+        const total = pc + sc + ac + cc + spillover;
 
         // completionCount caps each activity at 1 (for percentage calculation)
         const completionCount =

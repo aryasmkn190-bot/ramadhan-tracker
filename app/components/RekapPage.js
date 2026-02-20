@@ -24,6 +24,19 @@ import {
 
 const RANK_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
+const BULAN_INDONESIA = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+const formatTanggalIndonesia = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    const day = date.getDate();
+    const month = BULAN_INDONESIA[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+};
+
 export default function RekapPage() {
     const {
         activities,
@@ -90,8 +103,16 @@ export default function RekapPage() {
                 return sum + (d?.completed ? getSessionCount(d) : 0);
             }, 0);
 
+            // Count spillover activities (overnight from previous day)
+            const spilloverCompleted = Object.entries(dayActs).reduce((sum, [key, data]) => {
+                if (key.endsWith('__spillover') && data?.completed) {
+                    return sum + getSessionCount(data);
+                }
+                return sum;
+            }, 0);
+
             // total uses session count (for "Total Selesai" display)
-            const total = prayersCompleted + sunnahCompleted + activitiesCompleted + customCompleted;
+            const total = prayersCompleted + sunnahCompleted + activitiesCompleted + customCompleted + spilloverCompleted;
 
             // completionCount caps each activity at 1 (for percentage calculation)
             // This prevents multi-session activities from inflating the percentage beyond 100%
@@ -482,13 +503,13 @@ export default function RekapPage() {
                         <div style={{ flex: 1, textAlign: 'center' }}>
                             <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)' }}>
                                 {filterMode === 'day'
-                                    ? `Ramadhan Hari ke-${selectedDay}`
+                                    ? `Ramadhan Tanggal`
                                     : `Hari ${Math.max(1, selectedDay - 6)} – ${selectedDay}`
                                 }
                             </div>
                             <div style={{ fontSize: '11px', color: 'var(--dark-400)', marginTop: '2px' }}>
                                 {filterMode === 'day'
-                                    ? getDateForRamadanDay(selectedDay)
+                                    ? `-${formatTanggalIndonesia(getDateForRamadanDay(selectedDay))}-`
                                     : `${daysToInclude.length} hari`
                                 }
                             </div>

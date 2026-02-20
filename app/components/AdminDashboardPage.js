@@ -6,6 +6,7 @@ import { useApp } from '../contexts/AppContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import AdminLeaderboard from './AdminLeaderboard';
 import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
+import { getSessionCount } from '../utils/activityHelpers';
 
 export default function AdminDashboardPage() {
     const { profile } = useAuth();
@@ -54,7 +55,7 @@ export default function AdminDashboardPage() {
                 console.warn('RPC not available, using fallback queries:', rpcError?.message);
                 const [profilesRes, activitiesRes, quranRes] = await Promise.all([
                     supabase.from('profiles').select('id, role, user_group, created_at'),
-                    supabase.from('daily_activities').select('id', { count: 'exact', head: true }).eq('completed', true),
+                    supabase.from('daily_activities').select('id, activity_id, completed, start_time, end_time').eq('completed', true),
                     supabase.from('quran_readings').select('id', { count: 'exact', head: true }),
                 ]);
 
@@ -77,12 +78,16 @@ export default function AdminDashboardPage() {
                     }
                 });
 
+                // Count total activities using session-aware counting
+                const completedActivities = activitiesRes.data || [];
+                const totalActivities = completedActivities.reduce((sum, a) => sum + getSessionCount(a), 0);
+
                 setStats({
                     totalMembers: profiles.length,
                     admins,
                     newThisWeek,
                     totalQuranReadings: quranRes.count || 0,
-                    totalActivities: activitiesRes.count || 0,
+                    totalActivities,
                     groupCounts,
                 });
             }
