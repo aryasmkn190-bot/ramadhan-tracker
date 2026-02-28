@@ -157,6 +157,22 @@ export default function DailyClockChart({ dayActivities }) {
                 }
             }
 
+            // Special handling: Puasa (fasting) — treat as 05:00 - 18:00 if no specific time
+            if (!placed && act.id === 'puasa') {
+                segs.push({
+                    activityId: act.id,
+                    name: act.name,
+                    icon: act.icon,
+                    category: act.category || 'puasa',
+                    startH: 5,
+                    endH: 18,
+                    timeLabel: '05:00 - 18:00',
+                    durationLabel: getDurationLabel(5, 18),
+                });
+                cats.add(act.category || 'puasa');
+                placed = true;
+            }
+
             if (!placed) { untimed.push(act); cats.add(act.category || 'other'); }
         });
 
@@ -187,8 +203,8 @@ export default function DailyClockChart({ dayActivities }) {
         const ml = layers.length;
 
         // ======= Compute idle (no activity) gaps =======
-        // Merge all activity intervals
-        const intervals = segs.map(s => [s.startH, s.endH]).sort((a, b) => a[0] - b[0]);
+        // Merge all activity intervals (exclude puasa — fasting is passive, not a timed activity)
+        const intervals = segs.filter(s => s.activityId !== 'puasa').map(s => [s.startH, s.endH]).sort((a, b) => a[0] - b[0]);
         const merged = [];
         intervals.forEach(([s, e]) => {
             if (merged.length > 0 && s <= merged[merged.length - 1][1]) {

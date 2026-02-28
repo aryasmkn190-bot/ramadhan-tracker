@@ -390,14 +390,32 @@ export default function UserDetailModal({ user, onClose, adminQuranData, adminAc
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'center', background: 'rgba(0, 0, 0, 0.6)' }}>
             <div style={{ width: '100%', maxWidth: '430px', display: 'flex', flexDirection: 'column', background: 'var(--dark-900, #0f1117)', position: 'relative' }}>
-                {/* Header */}
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--dark-700)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                    <button onClick={onClose} style={{ width: '36px', height: '36px', background: 'var(--dark-700)', border: 'none', borderRadius: 'var(--radius-md)', color: 'white', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                {/* Header — with safe area padding for mobile notch/status bar */}
+                <div style={{
+                    paddingTop: 'max(16px, env(safe-area-inset-top, 16px))',
+                    padding: 'max(16px, env(safe-area-inset-top, 16px)) 16px 12px 16px',
+                    borderBottom: '1px solid var(--dark-700)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    flexShrink: 0,
+                    background: 'var(--dark-900, #0f1117)',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 10,
+                }}>
+                    <button onClick={onClose} style={{
+                        width: '44px', height: '44px', minWidth: '44px',
+                        background: 'var(--dark-700)', border: '2px solid var(--dark-600)',
+                        borderRadius: 'var(--radius-md)', color: 'white', fontSize: '20px',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        WebkitTapHighlightColor: 'transparent',
+                    }}>✕</button>
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--dark-100)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name || 'User'}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
                             {gc && <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 8px', borderRadius: 'var(--radius-full)', background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text }}>{user.user_group}</span>}
-                            <span style={{ fontSize: '11px', color: 'var(--dark-400)' }}>{user.email}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--dark-400)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
                         </div>
                     </div>
                 </div>

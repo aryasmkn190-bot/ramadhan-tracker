@@ -190,7 +190,9 @@ export default function AdminLeaderboard() {
         const activityMap = {}; // id -> { id, name, category }
         allActivities.forEach(a => {
             if (!a.completed) return;
-            const baseId = a.activity_id.replace('__spillover', '');
+            // Skip spillover entries — they are continuations, not separate activities
+            if (a.activity_id.endsWith('__spillover')) return;
+            const baseId = a.activity_id;
             if (activityMap[baseId]) return; // already mapped
 
             // Determine name and category
@@ -203,16 +205,18 @@ export default function AdminLeaderboard() {
                 else if (SUNNAH_IDS.includes(baseId)) category = 'sunnah';
                 else if (AKTIVITAS_IDS.includes(baseId)) category = 'aktivitas';
             } else {
-                // Custom or other activity — use stored name
-                const cleanName = (a.activity_name || baseId)
-                    .replace(/\s*\(lanjutan\)$/, '');
-                name = cleanName;
-
                 // Check if it's a known custom activity
                 const customAct = customActivitiesList.find(ca => `custom_${ca.id}` === baseId);
                 if (customAct) {
                     name = `${customAct.icon} ${customAct.name}`;
                     category = customAct.category || 'other';
+                } else {
+                    // Use stored activity name, skip if it looks like a raw ID
+                    const cleanName = (a.activity_name || '').replace(/\s*\(lanjutan\)$/, '').trim();
+                    if (!cleanName || cleanName.startsWith('custom_') || /^[0-9a-f]{8}-/.test(cleanName)) {
+                        return; // Skip unresolvable entries (orphaned/deleted custom activities)
+                    }
+                    name = cleanName;
                 }
             }
 
@@ -288,10 +292,14 @@ export default function AdminLeaderboard() {
 
     // Calculate idle hours for a set of activities on a single day
     // Same algorithm as DailyClockChart: merge time intervals, find gaps in 0-24
+    // Exclude puasa (fasting is passive, not a timed activity)
     const calcIdleHours = (activities) => {
         const intervals = [];
         activities.forEach(a => {
             if (!a.start_time) return;
+            // Skip puasa — fasting is passive, should not reduce idle time
+            const baseId = (a.activity_id || '').replace('__spillover', '');
+            if (baseId === 'puasa') return;
             // Multi-session
             if (a.start_time && a.end_time === '__multi__') {
                 try {
