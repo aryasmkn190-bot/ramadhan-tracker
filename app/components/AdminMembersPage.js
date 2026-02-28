@@ -34,6 +34,8 @@ export default function AdminMembersPage() {
     const [editGroup, setEditGroup] = useState('');
     const [editRole, setEditRole] = useState('member');
     const [editManagedGroups, setEditManagedGroups] = useState([]);
+    const [editLabels, setEditLabels] = useState([]);
+    const [newLabelInput, setNewLabelInput] = useState('');
 
     // Password change
     const [editPassword, setEditPassword] = useState('');
@@ -104,6 +106,8 @@ export default function AdminMembersPage() {
         setEditGroup(member.user_group || '');
         setEditRole(member.role || 'member');
         setEditManagedGroups(member.managed_groups || []);
+        setEditLabels(member.labels || []);
+        setNewLabelInput('');
         setEditPassword('');
         setShowPassword(false);
         setShowEditModal(true);
@@ -120,6 +124,37 @@ export default function AdminMembersPage() {
         });
     };
 
+    // Toggle a label
+    const toggleLabel = (label) => {
+        setEditLabels(prev => {
+            if (prev.includes(label)) {
+                return prev.filter(l => l !== label);
+            } else {
+                return [...prev, label];
+            }
+        });
+    };
+
+    // Add a new label
+    const addNewLabel = () => {
+        const label = newLabelInput.trim().toUpperCase();
+        if (label && !editLabels.includes(label)) {
+            setEditLabels(prev => [...prev, label]);
+        }
+        setNewLabelInput('');
+    };
+
+    // Get all unique labels from all members
+    const allLabels = useMemo(() => {
+        const labelSet = new Set();
+        members.forEach(m => {
+            if (m.labels && Array.isArray(m.labels)) {
+                m.labels.forEach(l => labelSet.add(l));
+            }
+        });
+        return Array.from(labelSet).sort();
+    }, [members]);
+
     const handleSaveEdit = async () => {
         if (!editingMember) return;
         try {
@@ -128,6 +163,7 @@ export default function AdminMembersPage() {
                 user_group: editGroup || null,
                 role: editRole,
                 managed_groups: editRole === 'group_admin' ? editManagedGroups : null,
+                labels: editLabels.length > 0 ? editLabels : [],
             };
             console.log('Updating profile:', editingMember.id, updateData);
 
@@ -153,7 +189,7 @@ export default function AdminMembersPage() {
 
             setMembers(prev => prev.map(m =>
                 m.id === editingMember.id
-                    ? { ...m, full_name: editName, user_group: editGroup || null, role: editRole, managed_groups: editRole === 'group_admin' ? editManagedGroups : null }
+                    ? { ...m, full_name: editName, user_group: editGroup || null, role: editRole, managed_groups: editRole === 'group_admin' ? editManagedGroups : null, labels: editLabels.length > 0 ? editLabels : [] }
                     : m
             ));
 
@@ -932,8 +968,19 @@ export default function AdminMembersPage() {
                                         }}>NO GROUP</span>
                                     )}
                                 </div>
-                                <div style={{ fontSize: '10px', color: 'var(--dark-400)' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--dark-400)', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                                     {member.email}
+                                    {member.labels && member.labels.length > 0 && member.labels.map(label => (
+                                        <span key={label} style={{
+                                            fontSize: '7px',
+                                            fontWeight: '700',
+                                            padding: '1px 5px',
+                                            borderRadius: 'var(--radius-full)',
+                                            background: 'rgba(251, 191, 36, 0.12)',
+                                            color: '#fbbf24',
+                                            border: '1px solid rgba(251, 191, 36, 0.2)',
+                                        }}>🏷️ {label}</span>
+                                    ))}
                                 </div>
                             </div>
 
@@ -1176,6 +1223,77 @@ export default function AdminMembersPage() {
                                     )}
                                 </div>
                             )}
+                            {/* Labels */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--dark-300)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    🏷️ Label
+                                </label>
+                                <div style={{ fontSize: '10px', color: 'var(--dark-500)', marginBottom: '8px' }}>
+                                    Label untuk mengelompokkan user lintas grup
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                    {allLabels.map(label => {
+                                        const isSelected = editLabels.includes(label);
+                                        return (
+                                            <button
+                                                key={label}
+                                                onClick={() => toggleLabel(label)}
+                                                style={{
+                                                    padding: '6px 10px',
+                                                    background: isSelected ? 'rgba(251, 191, 36, 0.15)' : 'var(--dark-700)',
+                                                    border: isSelected ? '2px solid rgba(251, 191, 36, 0.3)' : '2px solid var(--dark-600)',
+                                                    borderRadius: 'var(--radius-full)',
+                                                    color: isSelected ? '#fbbf24' : 'var(--dark-400)',
+                                                    fontWeight: '600',
+                                                    fontSize: '10px',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                {isSelected && '✓ '}{label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <input
+                                        type="text"
+                                        value={newLabelInput}
+                                        onChange={e => setNewLabelInput(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addNewLabel(); } }}
+                                        placeholder="Label baru (cth: ANU)"
+                                        style={{
+                                            flex: 1,
+                                            padding: '8px 12px',
+                                            background: 'var(--dark-700)',
+                                            border: '2px solid var(--dark-600)',
+                                            borderRadius: 'var(--radius-md)',
+                                            color: 'var(--dark-100)',
+                                            fontSize: '12px',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={addNewLabel}
+                                        disabled={!newLabelInput.trim()}
+                                        style={{
+                                            padding: '8px 14px',
+                                            background: newLabelInput.trim() ? 'rgba(251, 191, 36, 0.15)' : 'var(--dark-700)',
+                                            border: newLabelInput.trim() ? '2px solid rgba(251, 191, 36, 0.3)' : '2px solid var(--dark-600)',
+                                            borderRadius: 'var(--radius-md)',
+                                            color: newLabelInput.trim() ? '#fbbf24' : 'var(--dark-500)',
+                                            fontWeight: '600',
+                                            fontSize: '11px',
+                                            cursor: newLabelInput.trim() ? 'pointer' : 'default',
+                                        }}
+                                    >
+                                        + Tambah
+                                    </button>
+                                </div>
+                                {editLabels.length > 0 && (
+                                    <div style={{ fontSize: '10px', color: '#fbbf24', marginTop: '6px' }}>
+                                        🏷️ Label aktif: {editLabels.join(', ')}
+                                    </div>
+                                )}
+                            </div>
 
                             <button
                                 onClick={handleSaveEdit}

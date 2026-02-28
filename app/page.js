@@ -15,6 +15,7 @@ import AdminMembersPage from './components/AdminMembersPage';
 import AdminActivitiesPage from './components/AdminActivitiesPage';
 import AdminAnnouncementsPage from './components/AdminAnnouncementsPage';
 import GroupRekapPage from './components/GroupRekapPage';
+import LabelRekapPage from './components/LabelRekapPage';
 import AuthPage from './components/AuthPage';
 import RekapPage from './components/RekapPage';
 import Toast from './components/Toast';
@@ -76,6 +77,8 @@ function AppContent() {
           return <AdminActivitiesPage />;
         case 'admin_announcements':
           return <AdminAnnouncementsPage />;
+        case 'admin_labels':
+          return <LabelRekapPage />;
         case 'settings':
           return <SettingsPage />;
         // If admin navigates to old pages, redirect to dashboard

@@ -13,7 +13,8 @@ export default function BottomNav() {
         { id: 'admin_dashboard', icon: '📊', label: 'Dashboard' },
         { id: 'admin_members', icon: '👥', label: 'Anggota' },
         { id: 'admin_activities', icon: '📋', label: 'Aktivitas' },
-        { id: 'admin_announcements', icon: '📢', label: 'Pengumuman' },
+        { id: 'admin_labels', icon: '🏷️', label: 'Label' },
+        { id: 'admin_announcements', icon: '📢', label: 'Info' },
         { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
     ] : isGroupAdmin ? [
         { id: 'home', icon: '🏠', label: 'Beranda' },

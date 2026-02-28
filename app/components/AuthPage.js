@@ -96,7 +96,7 @@ export default function AuthPage() {
                         {isLogin ? 'Selamat Datang' : 'Daftar Akun Baru'}
                     </h2>
                     <p style={{ fontSize: '13px', color: 'var(--dark-400)' }}>
-                        {isLogin ? 'Masuk untuk melanjutkan ibadahmu' : 'Bergabung dengan komunitas Ramadhan'}
+                        {isLogin ? 'Masuk untuk melanjutkan aktivitasmu' : 'Bergabung dengan komunitas Ramadhan'}
                     </p>
                 </div>
 
