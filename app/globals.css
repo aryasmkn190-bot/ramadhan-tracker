@@ -725,11 +725,11 @@ body {
 
 .bottom-nav-inner {
   background: var(--dark-800);
-  padding: 10px 12px;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  padding: 6px 4px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
+  gap: 2px;
   border: none;
   border-radius: 0;
   box-shadow: none;
@@ -739,14 +739,16 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px;
+  gap: 2px;
+  padding: 6px 2px;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: var(--transition-normal);
   background: transparent;
   border: none;
   color: var(--dark-400);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .nav-item:hover {
@@ -763,15 +765,19 @@ body {
 }
 
 .nav-icon {
-  font-size: 22px;
+  font-size: 20px;
   transition: var(--transition-bounce);
 }
 
 .nav-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* Modals */

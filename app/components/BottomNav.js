@@ -15,7 +15,7 @@ export default function BottomNav() {
         { id: 'admin_activities', icon: '📋', label: 'Aktivitas' },
         { id: 'admin_labels', icon: '🏷️', label: 'Label' },
         { id: 'admin_announcements', icon: '📢', label: 'Info' },
-        { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
+        { id: 'settings', icon: '⚙️', label: 'Setting' },
     ] : isGroupAdmin ? [
         { id: 'home', icon: '🏠', label: 'Beranda' },
         { id: 'quran', icon: '📖', label: 'Quran' },
