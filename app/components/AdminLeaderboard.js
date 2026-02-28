@@ -79,12 +79,15 @@ export default function AdminLeaderboard() {
         setLoading(true);
 
         try {
-            // Always fetch custom activities (small dataset)
-            const customActRes = await supabase.from('custom_activities').select('id, name, icon, category');
+            // Phase 1: Fetch custom activities + try RPC in parallel (both fast)
+            const [customActRes, rpcResult] = await Promise.all([
+                supabase.from('custom_activities').select('id, name, icon, category'),
+                supabase.rpc('get_leaderboard'),
+            ]);
+
             if (customActRes.data) setCustomActivitiesList(customActRes.data);
 
-            // Try optimized RPC first — aggregation done on database server
-            const { data: rpcData, error: rpcError } = await supabase.rpc('get_leaderboard');
+            const { data: rpcData, error: rpcError } = rpcResult;
 
             if (!rpcError && rpcData && rpcData.length > 0) {
                 // RPC returns pre-aggregated data, map to expected format
@@ -96,13 +99,13 @@ export default function AdminLeaderboard() {
                     role: r.role,
                 }));
                 setProfiles(mappedProfiles);
-
                 setUseRpc(true);
 
-                // Fetch ALL activities with pagination (Supabase default limit is 1000)
+                // Fetch activities — only completed ones (server-side filter)
                 const actData = await fetchAllRows(
                     'daily_activities',
-                    'user_id, activity_date, activity_id, activity_name, completed, start_time, end_time'
+                    'user_id, activity_date, activity_id, activity_name, start_time, end_time',
+                    { completed: true }
                 );
                 setAllActivities(actData);
                 setQuranData([]); // Not needed when using RPC
@@ -111,11 +114,13 @@ export default function AdminLeaderboard() {
                 console.warn('Leaderboard RPC not available, using fallback:', rpcError?.message);
                 setUseRpc(false);
 
+                // Fetch all 3 in parallel — only completed activities
                 const [profilesRes, actData, quranRes] = await Promise.all([
                     supabase.from('profiles').select('id, full_name, user_group, role, email'),
                     fetchAllRows(
                         'daily_activities',
-                        'user_id, activity_date, activity_id, activity_name, completed, start_time, end_time'
+                        'user_id, activity_date, activity_id, activity_name, start_time, end_time',
+                        { completed: true }
                     ),
                     fetchAllRows(
                         'quran_readings',
@@ -191,7 +196,6 @@ export default function AdminLeaderboard() {
         // Collect all unique activity IDs from actual data (strip spillover suffix)
         const activityMap = {}; // id -> { id, name, category }
         allActivities.forEach(a => {
-            if (!a.completed) return;
             // Skip spillover entries — they are continuations, not separate activities
             if (a.activity_id.endsWith('__spillover')) return;
             const baseId = a.activity_id;
@@ -409,7 +413,7 @@ export default function AdminLeaderboard() {
             let totalIdle = 0;
             filteredDates.forEach(date => {
                 const dayActs = allActivities.filter(a =>
-                    a.user_id === userId && a.activity_date === date && a.completed
+                    a.user_id === userId && a.activity_date === date
                 );
                 totalIdle += calcIdleHours(dayActs);
             });
@@ -420,7 +424,6 @@ export default function AdminLeaderboard() {
         const countUserActivity = (userId, activityId) => {
             const matched = allActivities.filter(a =>
                 a.user_id === userId &&
-                a.completed &&
                 filteredDates.includes(a.activity_date) &&
                 (a.activity_id === activityId || a.activity_id === `${activityId}__spillover`)
             );
@@ -486,7 +489,7 @@ export default function AdminLeaderboard() {
         const computeExtraMetrics = (userId) => {
             let tidur_count = 0, tidur_hours = 0, amanah_hours = 0, hiburan_count = 0;
             allActivities.forEach(a => {
-                if (a.user_id !== userId || !a.completed || !filteredDates.includes(a.activity_date)) return;
+                if (a.user_id !== userId || !filteredDates.includes(a.activity_date)) return;
                 const baseId = a.activity_id.replace('__spillover', '');
                 const sc = getSessionCount(a);
                 if (tidurIds.has(baseId)) {
@@ -513,7 +516,7 @@ export default function AdminLeaderboard() {
         if (useRpc === true && rpcLeaderboardData.length > 0) {
             // Client-side aggregation (same as fallback mode but using RPC profiles)
             const relevantActivities = allActivities.filter(a =>
-                a.completed && filteredDates.includes(a.activity_date)
+                filteredDates.includes(a.activity_date)
             );
 
             const userStats = {};
@@ -617,7 +620,7 @@ export default function AdminLeaderboard() {
 
         // Fallback mode: client-side aggregation
         const relevantActivities = allActivities.filter(a =>
-            a.completed && filteredDates.includes(a.activity_date)
+            filteredDates.includes(a.activity_date)
         );
 
         const userStats = {};
