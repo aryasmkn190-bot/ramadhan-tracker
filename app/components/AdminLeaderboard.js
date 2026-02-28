@@ -34,6 +34,7 @@ export default function AdminLeaderboard() {
     const [rankBy, setRankBy] = useState('total'); // 'total', 'sholat', 'sunnah', 'aktivitas', 'quran'
     const [filterActivity, setFilterActivity] = useState('all'); // 'all' or specific activity id
     const [selectedUser, setSelectedUser] = useState(null);
+    const [groupRankBy, setGroupRankBy] = useState('produktif'); // 'produktif', 'avg', 'total', 'sholat', etc.
 
     // Current Ramadan day — starts at Maghrib (18:00) on Feb 18 2026
     const today = new Date();
@@ -592,10 +593,8 @@ export default function AdminLeaderboard() {
                 users = users.filter(u => u.user_group === selectedGroup);
             }
 
-            // Calculate productivity scores
-            if (rankBy === 'produktif') {
-                calculateProductivityScores(users);
-            }
+            // Always calculate productivity scores (needed for group ranking)
+            calculateProductivityScores(users);
 
             // Sort
             if (filterActivity !== 'all') {
@@ -725,10 +724,8 @@ export default function AdminLeaderboard() {
             users = users.filter(u => u.user_group === selectedGroup);
         }
 
-        // Calculate productivity scores if needed
-        if (rankBy === 'produktif') {
-            calculateProductivityScores(users);
-        }
+        // Always calculate productivity scores (needed for group ranking)
+        calculateProductivityScores(users);
 
         if (filterActivity !== 'all') {
             users.sort((a, b) => b.activityCount - a.activityCount || b.total - a.total);
@@ -752,23 +749,115 @@ export default function AdminLeaderboard() {
     const groupRanking = useMemo(() => {
         const groups = {};
         USER_GROUPS.forEach(g => {
-            groups[g] = { group: g, members: 0, totalActivities: 0, totalSessions: 0, avgActivities: 0 };
+            groups[g] = {
+                group: g, members: 0,
+                totalActivities: 0, totalSessions: 0,
+                avgActivities: 0, avgQuran: 0,
+                // Per-category totals
+                totalSholat: 0, totalSunnah: 0, totalAktivitas: 0, totalAmanah: 0,
+                totalTidur: 0, totalTidurHours: 0, totalHiburan: 0, totalIdle: 0,
+                totalProduktif: 0,
+                // Per-member averages (computed below)
+                avgSholat: 0, avgSunnah: 0, avgAktivitas: 0, avgAmanah: 0,
+                avgTidur: 0, avgTidurHours: 0, avgHiburan: 0, avgIdle: 0,
+                avgProduktif: 0,
+            };
         });
 
         rankedUsers.forEach(u => {
             if (u.user_group && groups[u.user_group]) {
-                groups[u.user_group].members++;
-                groups[u.user_group].totalActivities += u.total;
-                groups[u.user_group].totalSessions += u.quran_ayat;
+                const g = groups[u.user_group];
+                g.members++;
+                g.totalActivities += u.total;
+                g.totalSessions += u.quran_ayat;
+                g.totalSholat += u.sholat;
+                g.totalSunnah += u.sunnah;
+                g.totalAktivitas += (u.aktivitas + u.custom);
+                g.totalAmanah += u.amanah;
+                g.totalTidur += (u.tidur_count || 0);
+                g.totalTidurHours += (u.tidur_hours || 0);
+                g.totalHiburan += (u.hiburan_count || 0);
+                g.totalIdle += (u.idle_hours || 0);
+                g.totalProduktif += (u.produktif_score || 0);
             }
         });
 
+        // Calculate per-member averages
         Object.values(groups).forEach(g => {
-            g.avgActivities = g.members > 0 ? Math.round(g.totalActivities / g.members) : 0;
+            const m = g.members || 1;
+            g.avgActivities = Math.round((g.totalActivities / m) * 10) / 10;
+            g.avgQuran = Math.round((g.totalSessions / m) * 10) / 10;
+            g.avgSholat = Math.round((g.totalSholat / m) * 10) / 10;
+            g.avgSunnah = Math.round((g.totalSunnah / m) * 10) / 10;
+            g.avgAktivitas = Math.round((g.totalAktivitas / m) * 10) / 10;
+            g.avgAmanah = Math.round((g.totalAmanah / m) * 10) / 10;
+            g.avgTidur = Math.round((g.totalTidur / m) * 10) / 10;
+            g.avgTidurHours = Math.round((g.totalTidurHours / m) * 10) / 10;
+            g.avgHiburan = Math.round((g.totalHiburan / m) * 10) / 10;
+            g.avgIdle = Math.round((g.totalIdle / m) * 10) / 10;
+            g.avgProduktif = Math.round((g.totalProduktif / m) * 10) / 10;
         });
 
-        return Object.values(groups).sort((a, b) => b.totalActivities - a.totalActivities);
-    }, [rankedUsers]);
+        // Inverted categories (less = better)
+        const invertedModes = ['istirahat', 'hiburan', 'idle'];
+
+        // Sort based on selected criteria
+        return Object.values(groups).sort((a, b) => {
+            const valA = getGroupRawValue(a, groupRankBy);
+            const valB = getGroupRawValue(b, groupRankBy);
+            if (invertedModes.includes(groupRankBy)) {
+                // Less = better: sort ascending, but put 0-member groups last
+                if (a.members === 0 && b.members === 0) return 0;
+                if (a.members === 0) return 1;
+                if (b.members === 0) return -1;
+                return valA - valB;
+            }
+            return valB - valA; // Normal: more = better
+        });
+    }, [rankedUsers, groupRankBy]);
+
+    // Helper: get raw sort value for a group by mode
+    function getGroupRawValue(g, mode) {
+        switch (mode) {
+            case 'produktif': return g.avgProduktif;
+            case 'avg': return g.avgActivities;
+            case 'total': return g.totalActivities;
+            case 'sholat': return g.avgSholat;
+            case 'sunnah': return g.avgSunnah;
+            case 'aktivitas': return g.avgAktivitas;
+            case 'amanah': return g.avgAmanah;
+            case 'quran_total': return g.totalSessions;
+            case 'quran_avg': return g.avgQuran;
+            case 'istirahat': return g.avgTidur;
+            case 'hiburan': return g.avgHiburan;
+            case 'idle': return g.avgIdle;
+            default: return g.avgActivities;
+        }
+    }
+
+    // Helper: get the sort value for group ranking display
+    const getGroupSortValue = (g) => getGroupRawValue(g, groupRankBy);
+
+    const GROUP_SORT_CONFIG = {
+        produktif: { label: '🏅 Paling Produktif', unit: 'poin', inverted: false },
+        avg: { label: '📊 Rata-rata Aktivitas', unit: '/org', inverted: false },
+        total: { label: '🔢 Total Aktivitas', unit: 'akt', inverted: false },
+        sholat: { label: '🕌 Sholat Wajib', unit: '/org', inverted: false },
+        sunnah: { label: '⭐ Sholat Sunnah', unit: '/org', inverted: false },
+        aktivitas: { label: '📋 Aktivitas Harian', unit: '/org', inverted: false },
+        amanah: { label: '🎯 Amanah (Tugas)', unit: '/org', inverted: false },
+        quran_total: { label: '📖 Total Ayat Quran', unit: 'ayat', inverted: false },
+        quran_avg: { label: '📖 Rata-rata Ayat', unit: '/org', inverted: false },
+        istirahat: { label: '😴 Istirahat (sedikit = baik)', unit: '/org', inverted: true },
+        hiburan: { label: '🎮 Hiburan (sedikit = baik)', unit: '/org', inverted: true },
+        idle: { label: '⏳ Waktu Kosong (sedikit = baik)', unit: 'jam/org', inverted: true },
+    };
+
+    const getGroupSortLabel = (g) => {
+        const cfg = GROUP_SORT_CONFIG[groupRankBy] || GROUP_SORT_CONFIG.avg;
+        const val = getGroupSortValue(g);
+        return `${val} ${cfg.unit}`;
+    };
 
     // Helper: rank badge
     const getRankDisplay = (index) => {
@@ -824,7 +913,7 @@ export default function AdminLeaderboard() {
             <div className="section-header">
                 <h2 className="section-title">
                     <span>🏆</span>
-                    Ranking Komprehensif
+                    Leaderboard
                 </h2>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <RankingExport
@@ -832,8 +921,11 @@ export default function AdminLeaderboard() {
                         rankedUsers={rankedUsers}
                         filterLabel={filterLabel}
                         rankBy={rankBy}
+                        groupRankBy={groupRankBy}
                         getSortValue={getSortValue}
                         getRankDisplay={getRankDisplay}
+                        getGroupSortValue={getGroupSortValue}
+                        getGroupSortLabel={getGroupSortLabel}
                     />
                     <button className="section-action" onClick={fetchAllData}>Refresh</button>
                 </div>
@@ -1117,20 +1209,63 @@ export default function AdminLeaderboard() {
                     marginBottom: '14px',
                 }}>
                     <div style={{
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        color: 'var(--dark-300)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                         marginBottom: '10px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
                     }}>
-                        🏅 Peringkat Grup
+                        <div style={{
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            color: 'var(--dark-300)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                        }}>
+                            🏅 Peringkat Grup
+                        </div>
+                        <select
+                            value={groupRankBy}
+                            onChange={(e) => setGroupRankBy(e.target.value)}
+                            style={{
+                                padding: '5px 24px 5px 8px',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--dark-600)',
+                                background: 'var(--dark-700)',
+                                color: 'var(--dark-200)',
+                                fontSize: '10px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                appearance: 'none',
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right 6px center',
+                            }}
+                        >
+                            <optgroup label="📊 Umum">
+                                <option value="produktif">🏅 Paling Produktif</option>
+                                <option value="avg">📊 Rata-rata Aktivitas</option>
+                                <option value="total">🔢 Total Aktivitas</option>
+                            </optgroup>
+                            <optgroup label="📋 Kategori (rata-rata/anggota)">
+                                <option value="sholat">🕌 Sholat Wajib</option>
+                                <option value="sunnah">⭐ Sholat Sunnah</option>
+                                <option value="aktivitas">� Aktivitas Harian</option>
+                                <option value="amanah">🎯 Amanah (Tugas)</option>
+                                <option value="quran_avg">📖 Tadarus Quran</option>
+                            </optgroup>
+                            <optgroup label="⬇️ Terbalik (sedikit = baik)">
+                                <option value="istirahat">😴 Istirahat</option>
+                                <option value="hiburan">🎮 Hiburan</option>
+                                <option value="idle">⏳ Waktu Kosong</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {groupRanking.map((g, i) => {
                             const colors = GROUP_COLORS[g.group];
-                            const maxTotal = groupRanking[0]?.totalActivities || 1;
-                            const barWidth = Math.max(4, (g.totalActivities / maxTotal) * 100);
+                            const sortVal = getGroupSortValue(g);
+                            const maxVal = getGroupSortValue(groupRanking[0]) || 1;
+                            const barWidth = Math.max(4, (sortVal / maxVal) * 100);
 
                             return (
                                 <div
@@ -1185,7 +1320,7 @@ export default function AdminLeaderboard() {
                                             fontWeight: '700',
                                             color: 'var(--dark-200)',
                                         }}>
-                                            {g.totalActivities} akt • {g.totalSessions} ayat
+                                            {getGroupSortLabel(g)} • {g.members} org
                                         </span>
                                     </div>
                                 </div>

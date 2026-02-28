@@ -19,8 +19,11 @@ export default function RankingExport({
     rankedUsers,
     filterLabel,
     rankBy,
+    groupRankBy,
     getSortValue,
     getRankDisplay,
+    getGroupSortValue,
+    getGroupSortLabel,
 }) {
     const [showModal, setShowModal] = useState(false);
     const [exporting, setExporting] = useState(false);
@@ -107,6 +110,20 @@ export default function RankingExport({
         amanah: '🎯 Amanah (Tugas)',
         quran: '📖 Tadarus Quran',
         idle: '⏳ Waktu Kosong',
+    };
+
+    const groupRankByLabel = {
+        produktif: '🏅 Paling Produktif',
+        avg: '📊 Rata-rata Aktivitas',
+        total: '🔢 Total Aktivitas',
+        sholat: '🕌 Sholat Wajib',
+        sunnah: '⭐ Sholat Sunnah',
+        aktivitas: '📋 Aktivitas Harian',
+        amanah: '🎯 Amanah (Tugas)',
+        quran_avg: '📖 Tadarus Quran',
+        istirahat: '😴 Istirahat (sedikit = baik)',
+        hiburan: '🎮 Hiburan (sedikit = baik)',
+        idle: '⏳ Waktu Kosong (sedikit = baik)',
     };
 
     // Top users for export (max 20)
@@ -232,7 +249,7 @@ export default function RankingExport({
                                                 Peringkat Grup
                                             </div>
                                             <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                                                Ranking {groupRanking.length} grup berdasarkan total aktivitas
+                                                Ranking {groupRanking.length} grup • {groupRankByLabel[groupRankBy] || 'Rata-rata/Anggota'}
                                             </div>
                                         </div>
                                     </button>
@@ -333,6 +350,15 @@ export default function RankingExport({
                                     Diurutkan: {rankByLabel[rankBy] || 'Total Aktivitas'}
                                 </div>
                             )}
+                            {exportType === 'group' && (
+                                <div style={{
+                                    fontSize: '11px',
+                                    color: 'rgba(255,255,255,0.5)',
+                                    marginTop: '2px',
+                                }}>
+                                    Diurutkan: {groupRankByLabel[groupRankBy] || 'Rata-rata/Anggota'}
+                                </div>
+                            )}
                         </div>
 
                         {/* Card Body */}
@@ -342,8 +368,9 @@ export default function RankingExport({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {groupRanking.map((g, i) => {
                                         const colors = GROUP_COLORS[g.group];
-                                        const maxTotal = groupRanking[0]?.totalActivities || 1;
-                                        const barWidth = Math.max(8, (g.totalActivities / maxTotal) * 100);
+                                        const sortVal = getGroupSortValue ? getGroupSortValue(g) : g.totalActivities;
+                                        const maxVal = getGroupSortValue ? getGroupSortValue(groupRanking[0]) : (groupRanking[0]?.totalActivities || 1);
+                                        const barWidth = Math.max(8, (sortVal / (maxVal || 1)) * 100);
                                         return (
                                             <div key={g.group} style={{
                                                 display: 'flex',
@@ -400,14 +427,14 @@ export default function RankingExport({
                                                         fontWeight: '800',
                                                         color: '#f3f4f6',
                                                     }}>
-                                                        {g.totalActivities}
+                                                        {getGroupSortValue ? getGroupSortValue(g) : g.totalActivities}
                                                     </div>
                                                     <div style={{
                                                         fontSize: '9px',
                                                         color: '#6b7280',
                                                         fontWeight: '600',
                                                     }}>
-                                                        {g.members} anggota • {g.totalSessions} ayat
+                                                        {g.members} anggota
                                                     </div>
                                                 </div>
                                             </div>

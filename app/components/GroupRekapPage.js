@@ -7,6 +7,7 @@ import UserDetailModal from './UserDetailModal';
 import Pagination, { usePagination } from './Pagination';
 import { GROUP_COLORS } from '../data/userGroups';
 import { getSessionCount } from '../utils/activityHelpers';
+import GroupRekapExport from './GroupRekapExport';
 
 const RAMADAN_START_STR = '2026-02-18'; // 1 Ramadhan 1447 H
 
@@ -397,10 +398,8 @@ export default function GroupRekapPage() {
 
         let users = Object.values(userStats);
 
-        // Calculate productivity scores if needed
-        if (rankBy === 'produktif') {
-            calculateProductivityScores(users);
-        }
+        // Always calculate productivity scores (needed for export)
+        calculateProductivityScores(users);
 
         users.sort((a, b) => {
             if (rankBy === 'produktif') return b.produktif_score - a.produktif_score;
@@ -471,7 +470,7 @@ export default function GroupRekapPage() {
             <div style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                     <span style={{ fontSize: '24px' }}>👥</span>
-                    <div>
+                    <div style={{ flex: 1 }}>
                         <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)', margin: 0 }}>
                             Rekap Anggota
                         </h1>
@@ -486,6 +485,15 @@ export default function GroupRekapPage() {
                             </span>
                         </div>
                     </div>
+                    {!loading && rankedUsers.length > 0 && (
+                        <GroupRekapExport
+                            rankedUsers={rankedUsers}
+                            groupName={selectedGroup}
+                            filterLabel={filterLabel}
+                            rankBy={rankBy}
+                            groupStats={groupStats}
+                        />
+                    )}
                 </div>
             </div>
 
