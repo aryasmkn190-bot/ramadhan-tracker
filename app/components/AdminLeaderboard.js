@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import UserDetailModal from './UserDetailModal';
 import Pagination, { usePagination } from './Pagination';
 import { USER_GROUPS, GROUP_COLORS } from '../data/userGroups';
+import RankingExport from './RankingExport';
 import { getSessionCount } from '../utils/activityHelpers';
 
 const RAMADAN_START_STR = '2026-02-18'; // 1 Ramadhan 1447 H
@@ -825,7 +826,17 @@ export default function AdminLeaderboard() {
                     <span>🏆</span>
                     Ranking Komprehensif
                 </h2>
-                <button className="section-action" onClick={fetchAllData}>Refresh</button>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <RankingExport
+                        groupRanking={groupRanking}
+                        rankedUsers={rankedUsers}
+                        filterLabel={filterLabel}
+                        rankBy={rankBy}
+                        getSortValue={getSortValue}
+                        getRankDisplay={getRankDisplay}
+                    />
+                    <button className="section-action" onClick={fetchAllData}>Refresh</button>
+                </div>
             </div>
 
             {/* Filter Mode Tabs */}
