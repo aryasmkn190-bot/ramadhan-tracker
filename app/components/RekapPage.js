@@ -65,9 +65,9 @@ export default function RekapPage() {
             for (let d = startDay; d <= endDay; d++) days.push(d);
             return days;
         } else {
-            // 30 days
+            // day 1 to current day (to-date)
             const days = [];
-            for (let d = 1; d <= 30; d++) days.push(d);
+            for (let d = 1; d <= currentRamadanDay; d++) days.push(d);
             return days;
         }
     }, [filterMode, selectedDay]);

@@ -167,9 +167,9 @@ export default function AdminLeaderboard() {
             }
             return dates;
         } else {
-            // all 30 days
+            // day 1 to current day (to-date)
             const dates = [];
-            for (let d = 1; d <= 30; d++) {
+            for (let d = 1; d <= currentRamadanDay; d++) {
                 dates.push(getDateForRamadanDay(d));
             }
             return dates;
@@ -1424,38 +1424,19 @@ export default function AdminLeaderboard() {
                                         {/* Mini stats */}
                                         <div style={{
                                             display: 'flex',
-                                            gap: '6px',
+                                            gap: '3px 4px',
                                             fontSize: '10px',
                                             color: 'var(--dark-400)',
                                             flexWrap: 'wrap',
                                         }}>
-                                            {rankBy === 'produktif' ? (
-                                                <>
-                                                    {/* Positive metrics (green) */}
-                                                    <span style={{ color: '#10b981' }} title="Sholat Wajib">🕌{user.sholat}</span>
-                                                    <span style={{ color: '#10b981' }} title="Sholat Sunnah">⭐{user.sunnah}</span>
-                                                    <span style={{ color: '#10b981' }} title="Aktivitas Ramadhan">📋{user.aktivitas + user.custom}</span>
-                                                    <span style={{ color: '#10b981' }} title="Tugas (Amanah)">🎯{user.amanah}({user.amanah_hours}j)</span>
-                                                    <span style={{ color: '#10b981' }} title="Tadarus Quran">📖{user.quran_ayat}</span>
-                                                    {/* Negative metrics (red) */}
-                                                    <span style={{ color: '#ef4444' }} title="Tidur">😴{user.tidur_count}({user.tidur_hours}j)</span>
-                                                    <span style={{ color: '#ef4444' }} title="Waktu Kosong">⏳{user.idle_hours}j</span>
-                                                    {user.hiburan_count > 0 && (
-                                                        <span style={{ color: '#ef4444' }} title="Hiburan">🎮{user.hiburan_count}</span>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <span>🕌{user.sholat}</span>
-                                                    <span>⭐{user.sunnah}</span>
-                                                    <span>📋{user.aktivitas + user.custom}</span>
-                                                    {user.amanah > 0 && <span>🎯{user.amanah}</span>}
-                                                    <span>📖{user.quran_ayat} ayat</span>
-                                                    {user.idle_hours > 0 && (
-                                                        <span style={{ color: '#ef4444' }}>⏳{user.idle_hours}j</span>
-                                                    )}
-                                                </>
-                                            )}
+                                            <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>🕌 Sholat {user.sholat}</span>
+                                            <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>⭐ Sunnah {user.sunnah}</span>
+                                            <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>📋 Aktivitas {user.aktivitas + user.custom}</span>
+                                            <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>📖 Quran {user.quran_ayat} ayat</span>
+                                            {user.amanah > 0 && <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>🎯 Tugas {user.amanah} ({user.amanah_hours}j)</span>}
+                                            <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', color: '#ef4444' }}>⏳ Idle {user.idle_hours}j</span>
+                                            {user.tidur_count > 0 && <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', color: '#ef4444' }}>😴 Tidur {user.tidur_count}x ({user.tidur_hours}j)</span>}
+                                            {user.hiburan_count > 0 && <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', color: '#ef4444' }}>🎮 Hiburan {user.hiburan_count}</span>}
                                         </div>
                                     </div>
 

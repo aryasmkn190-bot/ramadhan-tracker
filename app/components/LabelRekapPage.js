@@ -183,7 +183,7 @@ export default function LabelRekapPage() {
             return dates;
         }
         const dates = [];
-        for (let d = 1; d <= 30; d++) dates.push(getDateForRamadanDay(d));
+        for (let d = 1; d <= currentRamadanDay; d++) dates.push(getDateForRamadanDay(d));
         return dates;
     }, [filterMode, selectedDay, selectedWeek]);
 
@@ -696,6 +696,9 @@ export default function LabelRekapPage() {
                                             <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>📋 Aktivitas {user.aktivitas + user.custom}</span>
                                             <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>📖 Quran {user.quran_ayat} ayat</span>
                                             {user.amanah > 0 && <span style={{ padding: '1px 5px', background: 'var(--dark-700)', borderRadius: '4px' }}>🎯 Tugas {user.amanah}</span>}
+                                            <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', color: '#ef4444' }}>⏳ Idle {user.idle_hours}j</span>
+                                            {user.tidur_count > 0 && <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', color: '#ef4444' }}>😴 Tidur {user.tidur_count}x ({user.tidur_hours}j)</span>}
+                                            {user.hiburan_count > 0 && <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', color: '#ef4444' }}>🎮 Hiburan {user.hiburan_count}</span>}
                                         </div>
                                     </div>
 
