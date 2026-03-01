@@ -31,7 +31,7 @@ export default function GroupRekapExport({
         day: 'numeric',
         month: 'long',
         year: 'numeric',
-    });
+    }) + ' ' + today.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
     const rankByLabel = {
         produktif: '🏅 Paling Produktif',
@@ -76,7 +76,7 @@ export default function GroupRekapExport({
             const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
             const pageWidth = doc.internal.pageSize.getWidth();
             const sortLabel = pdfRankByLabel[rankBy] || 'Total Aktivitas';
-            const cleanFilterLabel = stripEmoji(filterLabel);
+            const cleanFilterLabel = stripEmoji(filterLabel).replace('30 Hari', 'Todate Rekap');
 
             // Header
             doc.setFontSize(16);
@@ -84,7 +84,7 @@ export default function GroupRekapExport({
             doc.text(`Ramadhan Tracker - Rekap ${groupName}`, pageWidth / 2, 15, { align: 'center' });
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(`${cleanFilterLabel} | ${dateStr}`, pageWidth / 2, 22, { align: 'center' });
+            doc.text(`${cleanFilterLabel} | Di export pada ${dateStr}`, pageWidth / 2, 22, { align: 'center' });
             doc.text(`Peringkat #${rankFrom} - #${Math.min(rankTo, rankedUsers.length)} | Diurutkan: ${sortLabel}`, pageWidth / 2, 27, { align: 'center' });
 
             if (groupStats) {

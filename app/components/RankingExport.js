@@ -42,7 +42,7 @@ export default function RankingExport({
         day: 'numeric',
         month: 'long',
         year: 'numeric',
-    });
+    }) + ' ' + today.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
     const rankByLabel = {
         produktif: '🏅 Paling Produktif',
@@ -103,7 +103,7 @@ export default function RankingExport({
             const sortLabel = type === 'group'
                 ? (pdfGroupRankByLabel[groupRankBy] || 'Rata-rata/Anggota')
                 : (pdfRankByLabel[rankBy] || 'Total Aktivitas');
-            const cleanFilterLabel = stripEmoji(filterLabel);
+            const cleanFilterLabel = stripEmoji(filterLabel).replace('30 Hari Ramadhan', 'Todate Rekap Ramadhan');
 
             // Header
             doc.setFontSize(16);
@@ -111,7 +111,7 @@ export default function RankingExport({
             doc.text(`Ramadhan Tracker - ${title}`, pageWidth / 2, 15, { align: 'center' });
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
-            doc.text(`${cleanFilterLabel} | ${dateStr}`, pageWidth / 2, 22, { align: 'center' });
+            doc.text(`${cleanFilterLabel} | Di export pada ${dateStr}`, pageWidth / 2, 22, { align: 'center' });
             doc.text(`Peringkat #${rankFrom} - #${Math.min(rankTo, type === 'group' ? groupRanking.length : rankedUsers.length)} | Diurutkan: ${sortLabel}`, pageWidth / 2, 27, { align: 'center' });
 
             if (type === 'group') {
