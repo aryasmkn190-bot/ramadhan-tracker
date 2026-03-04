@@ -195,7 +195,10 @@ const smallBtnStyle = (color) => ({
 // ==================== COMPONENT ====================
 export default function MisiPage() {
     const { user } = useAuth();
-    const { addToast } = useApp();
+    const { addToast, quranGlobalProgress, setCurrentPage } = useApp();
+
+    // Khatam is auto-completed from tadarus progress
+    const isKhatamDone = quranGlobalProgress.percentage >= 100;
 
     const [missions, setMissions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -425,7 +428,7 @@ export default function MisiPage() {
     // ==================== PROGRESS CALCULATION ====================
     const getProgress = () => {
         const hafalanDone = ALL_HAFALAN_IDS.filter(id => getMission(id)?.completed).length;
-        const khatamDone = getMission('khatam')?.completed ? 1 : 0;
+        const khatamDone = isKhatamDone ? 1 : 0;
         const bukuDone = getMission('buku')?.completed ? 1 : 0;
         const leadershipDone = getMultiMissions('leadership').length > 0 ? 1 : 0;
         const dayaJelajahDone = getMultiMissions('daya_jelajah').length > 0 ? 1 : 0;
@@ -454,7 +457,7 @@ export default function MisiPage() {
                 const done = ALL_HAFALAN_IDS.filter(id => getMission(id)?.completed).length;
                 return `${done}/${ALL_HAFALAN_IDS.length}`;
             }
-            case 'khatam': return getMission('khatam')?.completed ? '✅' : '—';
+            case 'khatam': return isKhatamDone ? '✅' : `${quranGlobalProgress.percentage}%`;
             case 'buku': return getMission('buku')?.completed ? '✅' : '—';
             case 'leadership': { const c = getMultiMissions('leadership').length; return c > 0 ? `${c} kegiatan` : '—'; }
             case 'daya_jelajah': { const c = getMultiMissions('daya_jelajah').length; return c > 0 ? `${c} kampus` : '—'; }
@@ -693,7 +696,61 @@ export default function MisiPage() {
         switch (sectionId) {
             case 'hafalan': return renderHafalanSection();
             case 'khatam': return (
-                <div style={{ padding: '16px' }}>{renderCheckItem('khatam', 'Khatam Al-Quran 30 Juz', color)}</div>
+                <div style={{ padding: '16px' }}>
+                    {/* Auto-sync info */}
+                    <div style={{
+                        padding: '12px 14px', background: isKhatamDone ? 'rgba(251,191,36,0.1)' : 'rgba(251,191,36,0.05)',
+                        borderRadius: 'var(--radius-md)', marginBottom: '16px',
+                        border: `1px solid ${isKhatamDone ? 'rgba(251,191,36,0.25)' : 'rgba(251,191,36,0.1)'}`,
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '28px' }}>{isKhatamDone ? '🌟' : '📖'}</span>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '14px', fontWeight: '700', color: isKhatamDone ? '#fbbf24' : 'var(--dark-100)' }}>
+                                    {isKhatamDone ? 'Alhamdulillah, Khatam! 🎉' : 'Progress Tadarus Al-Quran'}
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--dark-400)', marginTop: '2px' }}>
+                                    {quranGlobalProgress.totalRead.toLocaleString()} / {quranGlobalProgress.totalAyat.toLocaleString()} ayat terbaca
+                                </div>
+                            </div>
+                            <span style={{
+                                fontSize: '18px', fontWeight: '800',
+                                color: isKhatamDone ? '#fbbf24' : 'var(--dark-300)',
+                            }}>{quranGlobalProgress.percentage}%</span>
+                        </div>
+                        {/* Progress bar */}
+                        <div style={{
+                            height: '8px', background: 'rgba(255,255,255,0.1)',
+                            borderRadius: 'var(--radius-full)', overflow: 'hidden',
+                        }}>
+                            <div style={{
+                                height: '100%',
+                                width: `${Math.min(quranGlobalProgress.percentage, 100)}%`,
+                                background: isKhatamDone
+                                    ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                                    : 'linear-gradient(90deg, #fbbf24, #d97706)',
+                                borderRadius: 'var(--radius-full)',
+                                transition: 'width 0.5s ease',
+                            }} />
+                        </div>
+                    </div>
+                    {/* Info text */}
+                    <div style={{
+                        fontSize: '12px', color: 'var(--dark-400)', textAlign: 'center',
+                        lineHeight: '1.5',
+                    }}>
+                        {isKhatamDone
+                            ? '✅ Misi ini otomatis terceklis karena progress tadarus Al-Quran sudah 100%'
+                            : <>📊 Misi ini akan otomatis selesai saat progress tadarus mencapai 100%. <br />
+                                <button onClick={() => setCurrentPage('quran')} style={{
+                                    background: 'none', border: 'none', color: '#fbbf24',
+                                    cursor: 'pointer', fontWeight: '600', fontSize: '12px',
+                                    fontFamily: 'inherit', padding: '4px 0', marginTop: '4px',
+                                }}>Buka halaman Quran →</button>
+                            </>
+                        }
+                    </div>
+                </div>
             );
 
             case 'buku': return (
