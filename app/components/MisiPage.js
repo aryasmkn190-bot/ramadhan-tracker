@@ -382,37 +382,39 @@ export default function MisiPage() {
         } catch (e) { addToast('Gagal menambahkan.', 'error'); }
     };
 
+    const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5MB max
+
     const uploadTulisan = async (file) => {
         if (!file) return;
+
+        // Validate: must be PDF
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            addToast('❌ Hanya file PDF yang diperbolehkan', 'error');
+            return;
+        }
+
+        // Validate: max file size (5MB)
+        if (file.size > MAX_PDF_SIZE) {
+            addToast(`❌ Ukuran file terlalu besar (${formatFileSize(file.size)}). Maksimal 5MB. Silakan kompres PDF di smallpdf.com atau ilovepdf.com terlebih dahulu.`, 'error');
+            return;
+        }
+
         try {
             setUploading(true);
+            addToast(`📄 Mengupload PDF (${formatFileSize(file.size)})...`, 'info');
 
-            // Compress if it's an image file
-            let fileToUpload = file;
-            let ext = file.name.split('.').pop();
-            if (file.type.startsWith('image/')) {
-                addToast('🔄 Mengkompresi gambar...', 'info');
-                const originalSize = file.size;
-                fileToUpload = await compressImage(file);
-                ext = 'jpg';
-                const savedPercent = Math.round((1 - fileToUpload.size / originalSize) * 100);
-                if (savedPercent > 5) {
-                    addToast(`📸 Dikompresi: ${formatFileSize(originalSize)} → ${formatFileSize(fileToUpload.size)} (${savedPercent}% lebih kecil)`, 'success');
-                }
-            }
-
-            const path = `${user.id}/tulisan_${Date.now()}.${ext}`;
-            const { error: uploadErr } = await supabase.storage.from('missions').upload(path, fileToUpload);
+            const path = `${user.id}/tulisan_${Date.now()}.pdf`;
+            const { error: uploadErr } = await supabase.storage.from('missions').upload(path, file);
             if (uploadErr) throw uploadErr;
             const { data: urlData } = supabase.storage.from('missions').getPublicUrl(path);
             await insertMission('tulisan', {
                 completed: true,
                 completion_date: todayStr(),
-                data: { fileName: file.name },
+                data: { fileName: file.name, fileSize: formatFileSize(file.size) },
                 file_url: urlData.publicUrl,
             });
             setUploading(false);
-            addToast('✅ Karya tulis berhasil diupload!', 'success');
+            addToast('✅ Karya tulis PDF berhasil diupload!', 'success');
         } catch (e) {
             setUploading(false);
             addToast('Gagal mengupload file.', 'error');
@@ -731,7 +733,19 @@ export default function MisiPage() {
                 <>
                     {renderMultiEntries('tulisan', getMultiMissions('tulisan'), [], color)}
                     <div style={{ padding: '0 16px 16px' }}>
-                        <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        {/* PDF format info */}
+                        <div style={{
+                            padding: '10px 14px', background: `${color}10`,
+                            borderRadius: 'var(--radius-md)', marginBottom: '12px',
+                            border: `1px solid ${color}20`, fontSize: '12px', color: 'var(--dark-300)',
+                        }}>
+                            <span style={{ fontWeight: '600', color: color }}>📋 Format:</span> Hanya file PDF (maks. 5MB)
+                            <br />
+                            <span style={{ fontSize: '11px', color: 'var(--dark-400)' }}>
+                                Tip: Gunakan smallpdf.com untuk kompres PDF yang terlalu besar
+                            </span>
+                        </div>
+                        <input ref={fileInputRef} type="file" accept=".pdf,application/pdf"
                             style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) uploadTulisan(e.target.files[0]); }} />
                         <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{
                             width: '100%', padding: '14px', border: '2px dashed var(--dark-500)',
@@ -740,7 +754,7 @@ export default function MisiPage() {
                             cursor: uploading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                             transition: 'all 0.2s ease', opacity: uploading ? 0.6 : 1,
                         }}>
-                            {uploading ? '⏳ Mengupload...' : '📄 Upload Karya Tulis'}
+                            {uploading ? '⏳ Mengupload...' : '📄 Upload PDF Karya Tulis'}
                         </button>
                     </div>
                 </>
