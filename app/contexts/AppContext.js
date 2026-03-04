@@ -85,7 +85,7 @@ export function AppProvider({ children }) {
     const [activityCategories, setActivityCategories] = useState([]);
 
     // Valid pages for persistence
-    const VALID_PAGES = ['home', 'quran', 'rekap', 'leaderboard', 'settings', 'admin', 'admin_dashboard', 'admin_members', 'admin_activities', 'admin_announcements', 'admin_labels'];
+    const VALID_PAGES = ['home', 'quran', 'misi', 'rekap', 'leaderboard', 'settings', 'admin', 'admin_dashboard', 'admin_members', 'admin_activities', 'admin_announcements', 'admin_labels'];
 
     // Wrapper: save currentPage to localStorage on change
     const setCurrentPage = useCallback((page) => {

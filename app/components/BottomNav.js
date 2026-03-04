@@ -19,12 +19,14 @@ export default function BottomNav() {
     ] : isGroupAdmin ? [
         { id: 'home', icon: '🏠', label: 'Beranda' },
         { id: 'quran', icon: '📖', label: 'Quran' },
+        { id: 'misi', icon: '🎯', label: 'Misi' },
         { id: 'rekap', icon: '📊', label: 'Rekap' },
         { id: 'group_rekap', icon: '👥', label: 'Anggota' },
         { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
     ] : [
         { id: 'home', icon: '🏠', label: 'Beranda' },
         { id: 'quran', icon: '📖', label: 'Quran' },
+        { id: 'misi', icon: '🎯', label: 'Misi' },
         { id: 'rekap', icon: '📊', label: 'Rekap' },
         { id: 'settings', icon: '⚙️', label: 'Pengaturan' },
     ];

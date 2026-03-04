@@ -18,6 +18,7 @@ import GroupRekapPage from './components/GroupRekapPage';
 import LabelRekapPage from './components/LabelRekapPage';
 import AuthPage from './components/AuthPage';
 import RekapPage from './components/RekapPage';
+import MisiPage from './components/MisiPage';
 import Toast from './components/Toast';
 
 function AppContent() {
@@ -101,6 +102,8 @@ function AppContent() {
         return <LeaderboardPage />;
       case 'rekap':
         return <RekapPage />;
+      case 'misi':
+        return <MisiPage />;
       case 'group_rekap':
         return isGroupAdmin ? <GroupRekapPage /> : <HomePage />;
       default:
