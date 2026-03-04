@@ -567,29 +567,18 @@ export default function GroupRekapPage() {
         <section className="main-content" style={{ paddingBottom: '100px' }}>
             {/* Header */}
             <div style={{ marginBottom: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                {/* Row 1: Title + Buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
                     <span style={{ fontSize: '24px' }}>👥</span>
-                    <div style={{ flex: 1 }}>
-                        <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)', margin: 0 }}>
-                            Rekap Anggota
-                        </h1>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                            <span style={{
-                                fontSize: '11px', fontWeight: '600', padding: '3px 10px',
-                                borderRadius: 'var(--radius-full)',
-                                background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text,
-                            }}>{selectedGroup}</span>
-                            <span style={{ fontSize: '12px', color: 'var(--dark-400)' }}>
-                                {groupStats.totalMembers} anggota
-                            </span>
-                        </div>
-                    </div>
+                    <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--dark-100)', margin: 0, flex: 1 }}>
+                        Rekap Anggota
+                    </h1>
                     {!loading && rankedUsers.length > 0 && (
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
                             <button onClick={openMisiRekap} style={{
-                                padding: '8px 12px', background: 'rgba(251,191,36,0.15)',
+                                padding: '7px 12px', background: 'rgba(251,191,36,0.15)',
                                 border: '1px solid rgba(251,191,36,0.3)', borderRadius: 'var(--radius-md)',
-                                color: '#fbbf24', fontSize: '12px', fontWeight: '700',
+                                color: '#fbbf24', fontSize: '11px', fontWeight: '700',
                                 cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
                             }}>🎯 Misi</button>
                             <GroupRekapExport
@@ -601,6 +590,17 @@ export default function GroupRekapPage() {
                             />
                         </div>
                     )}
+                </div>
+                {/* Row 2: Group badge + member count */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '36px' }}>
+                    <span style={{
+                        fontSize: '11px', fontWeight: '600', padding: '3px 10px',
+                        borderRadius: 'var(--radius-full)',
+                        background: gc.bg, border: `1px solid ${gc.border}`, color: gc.text,
+                    }}>{selectedGroup}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--dark-400)' }}>
+                        {groupStats.totalMembers} anggota
+                    </span>
                 </div>
             </div>
 
