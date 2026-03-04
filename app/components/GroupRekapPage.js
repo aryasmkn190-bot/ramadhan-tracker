@@ -11,6 +11,33 @@ import GroupRekapExport from './GroupRekapExport';
 
 const RAMADAN_START_STR = '2026-02-18'; // 1 Ramadhan 1447 H
 
+// ========== Mission Constants (match MisiPage) ==========
+const HAFALAN_SURAHS = [
+    { surah: 60, ayat: [12] },
+    { surah: 61, ayat: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] },
+    { surah: 3, ayat: [190, 191, 192, 193, 194] },
+    { surah: 16, ayat: [125] },
+    { surah: 3, ayat: [104] },
+    { surah: 57, ayat: [10] },
+    { surah: 15, ayat: [19, 20] },
+    { surah: 9, ayat: [24] },
+    { surah: 20, ayat: [117, 118, 119] },
+    { surah: 24, ayat: [36] },
+    { surah: 3, ayat: [200] },
+];
+const ALL_HAFALAN_IDS = HAFALAN_SURAHS.flatMap(s => s.ayat.map(a => `hafalan_${s.surah}_${a}`));
+const LARI_IDS = ['lari_1', 'lari_2', 'lari_3'];
+const TOTAL_QURAN_AYAT = 6236;
+const MISI_CATEGORIES = [
+    { id: 'hafalan', label: 'Hafalan', icon: '📖', color: '#10b981' },
+    { id: 'khatam', label: 'Khatam', icon: '🕌', color: '#fbbf24' },
+    { id: 'buku', label: 'Buku', icon: '📚', color: '#8b5cf6' },
+    { id: 'leadership', label: 'Leadership', icon: '🏛️', color: '#ec4899' },
+    { id: 'daya_jelajah', label: 'D. Jelajah', icon: '🗺️', color: '#14b8a6' },
+    { id: 'tulisan', label: 'Tulisan', icon: '✍️', color: '#f97316' },
+    { id: 'lari', label: 'Lari', icon: '🏃', color: '#ef4444' },
+];
+
 const getDateForRamadanDay = (day) => {
     const date = new Date(RAMADAN_START_STR + 'T00:00:00');
     date.setDate(date.getDate() + day - 1);
@@ -49,6 +76,11 @@ export default function GroupRekapPage() {
     const [customActivitiesList, setCustomActivitiesList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedUser, setSelectedUser] = useState(null);
+
+    // Misi Rekap state
+    const [showMisiRekap, setShowMisiRekap] = useState(false);
+    const [misiData, setMisiData] = useState([]);
+    const [misiLoading, setMisiLoading] = useState(false);
 
     // Filters
     const [filterMode, setFilterMode] = useState('all'); // 'day', 'week', 'all'
@@ -144,6 +176,72 @@ export default function GroupRekapPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    // ========== Fetch Misi Data ==========
+    const fetchMisiData = async () => {
+        const memberIds = profiles.map(p => p.id);
+        if (memberIds.length === 0) return;
+        setMisiLoading(true);
+        try {
+            const allMisi = await fetchPaginated(() =>
+                supabase.from('user_missions').select('user_id, mission_id, completed').in('user_id', memberIds)
+            );
+
+            // Compute per-user quran totals (for khatam — uses ALL quranData, unfiltered)
+            const userQuranTotals = {};
+            quranData.forEach(q => {
+                if (!userQuranTotals[q.user_id]) userQuranTotals[q.user_id] = 0;
+                const cnt = (q.end_ayat && q.start_ayat) ? Math.max(q.end_ayat - q.start_ayat + 1, 1) : 1;
+                userQuranTotals[q.user_id] += cnt;
+            });
+
+            // Build per-user mission progress
+            const results = profiles.map(p => {
+                const userMisi = allMisi.filter(m => m.user_id === p.id);
+                const completed = new Set(userMisi.filter(m => m.completed).map(m => m.mission_id));
+                const multi = (prefix) => userMisi.filter(m => m.mission_id === prefix && m.completed).length;
+
+                const hafalanDone = ALL_HAFALAN_IDS.filter(id => completed.has(id)).length;
+                const quranAyat = userQuranTotals[p.id] || 0;
+                const isKhatam = quranAyat >= TOTAL_QURAN_AYAT;
+                const bukuDone = completed.has('buku');
+                const leadershipCount = multi('leadership');
+                const dayaJelajahCount = multi('daya_jelajah');
+                const tulisanCount = multi('tulisan');
+                const lariDone = LARI_IDS.filter(id => completed.has(id)).length;
+
+                const cats = [
+                    hafalanDone === ALL_HAFALAN_IDS.length,
+                    isKhatam, bukuDone,
+                    leadershipCount > 0, dayaJelajahCount > 0,
+                    tulisanCount > 0, lariDone === 3,
+                ];
+                const totalDone = cats.filter(Boolean).length;
+
+                return {
+                    id: p.id, full_name: p.full_name, role: p.role,
+                    hafalanDone, hafalanTotal: ALL_HAFALAN_IDS.length,
+                    isKhatam, quranAyat,
+                    bukuDone, leadershipCount, dayaJelajahCount, tulisanCount,
+                    lariDone, lariTotal: 3,
+                    totalDone, totalCategories: 7,
+                    percentage: Math.round((totalDone / 7) * 100),
+                    categoryStatus: cats,
+                };
+            }).sort((a, b) => b.totalDone - a.totalDone || b.percentage - a.percentage);
+
+            setMisiData(results);
+        } catch (e) {
+            console.error('Error fetching misi data:', e);
+        } finally {
+            setMisiLoading(false);
+        }
+    };
+
+    const openMisiRekap = () => {
+        setShowMisiRekap(true);
+        fetchMisiData();
     };
 
     // Filter dates based on mode
@@ -487,13 +585,21 @@ export default function GroupRekapPage() {
                         </div>
                     </div>
                     {!loading && rankedUsers.length > 0 && (
-                        <GroupRekapExport
-                            rankedUsers={rankedUsers}
-                            groupName={selectedGroup}
-                            filterLabel={filterLabel}
-                            rankBy={rankBy}
-                            groupStats={groupStats}
-                        />
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button onClick={openMisiRekap} style={{
+                                padding: '8px 12px', background: 'rgba(251,191,36,0.15)',
+                                border: '1px solid rgba(251,191,36,0.3)', borderRadius: 'var(--radius-md)',
+                                color: '#fbbf24', fontSize: '12px', fontWeight: '700',
+                                cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
+                            }}>🎯 Misi</button>
+                            <GroupRekapExport
+                                rankedUsers={rankedUsers}
+                                groupName={selectedGroup}
+                                filterLabel={filterLabel}
+                                rankBy={rankBy}
+                                groupStats={groupStats}
+                            />
+                        </div>
                     )}
                 </div>
             </div>
@@ -773,6 +879,141 @@ export default function GroupRekapPage() {
                     adminQuranData={quranData}
                     adminActivitiesData={allActivities}
                 />
+            )}
+            {/* ========== Misi Rekap Modal ========== */}
+            {showMisiRekap && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                    zIndex: 2000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                }} onClick={() => setShowMisiRekap(false)}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: 'var(--dark-800)', width: '100%', maxWidth: '430px',
+                        borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
+                        padding: '20px', maxHeight: '85vh', overflowY: 'auto',
+                    }}>
+                        {/* Handle */}
+                        <div style={{ width: '40px', height: '4px', background: 'var(--dark-500)', borderRadius: 'var(--radius-full)', margin: '0 auto 16px' }} />
+
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{ fontSize: '24px' }}>🎯</span>
+                                <div>
+                                    <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--dark-100)', margin: 0 }}>Rekap Misi</h3>
+                                    <p style={{ fontSize: '11px', color: 'var(--dark-400)', margin: 0 }}>{selectedGroup} • {profiles.length} anggota</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowMisiRekap(false)} style={{
+                                width: '32px', height: '32px', borderRadius: 'var(--radius-full)',
+                                background: 'var(--dark-700)', border: 'none', color: 'var(--dark-300)',
+                                fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>×</button>
+                        </div>
+
+                        {misiLoading ? (
+                            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--dark-400)' }}>
+                                <div style={{ fontSize: '32px', marginBottom: '12px', animation: 'pulse 1.5s ease-in-out infinite' }}>🎯</div>
+                                Memuat data misi...
+                            </div>
+                        ) : (
+                            <>
+                                {/* Summary row */}
+                                <div style={{
+                                    display: 'flex', gap: '4px', marginBottom: '16px', overflowX: 'auto',
+                                    paddingBottom: '4px',
+                                }}>
+                                    {MISI_CATEGORIES.map((cat, ci) => {
+                                        const doneCount = misiData.filter(u => u.categoryStatus[ci]).length;
+                                        return (
+                                            <div key={cat.id} style={{
+                                                flex: '0 0 auto', textAlign: 'center', padding: '8px 10px',
+                                                background: 'var(--dark-700)', borderRadius: 'var(--radius-md)',
+                                                minWidth: '52px',
+                                            }}>
+                                                <div style={{ fontSize: '14px' }}>{cat.icon}</div>
+                                                <div style={{ fontSize: '12px', fontWeight: '700', color: cat.color, marginTop: '2px' }}>
+                                                    {doneCount}/{misiData.length}
+                                                </div>
+                                                <div style={{ fontSize: '8px', color: 'var(--dark-400)', marginTop: '1px' }}>{cat.label}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* User list */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {misiData.map((user, idx) => (
+                                        <div key={user.id} style={{
+                                            background: 'var(--dark-700)', borderRadius: 'var(--radius-md)',
+                                            padding: '12px', border: '1px solid rgba(255,255,255,0.05)',
+                                        }}>
+                                            {/* Name + progress */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <span style={{
+                                                    fontSize: idx < 3 ? '16px' : '12px',
+                                                    fontWeight: '700', color: idx < 3 ? undefined : 'var(--dark-400)',
+                                                    width: '24px', textAlign: 'center',
+                                                }}>{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}</span>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{
+                                                        fontSize: '13px', fontWeight: '600', color: 'var(--dark-100)',
+                                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                    }}>{user.full_name || 'User'}</div>
+                                                </div>
+                                                <span style={{
+                                                    fontSize: '12px', fontWeight: '700',
+                                                    color: user.percentage === 100 ? '#10b981' : user.percentage >= 50 ? '#fbbf24' : 'var(--dark-400)',
+                                                }}>{user.totalDone}/7</span>
+                                            </div>
+
+                                            {/* Progress bar */}
+                                            <div style={{
+                                                height: '4px', background: 'var(--dark-600)',
+                                                borderRadius: 'var(--radius-full)', overflow: 'hidden', marginBottom: '8px',
+                                            }}>
+                                                <div style={{
+                                                    height: '100%', width: `${user.percentage}%`,
+                                                    background: user.percentage === 100 ? '#10b981' : user.percentage >= 50 ? '#fbbf24' : '#ef4444',
+                                                    borderRadius: 'var(--radius-full)', transition: 'width 0.3s ease',
+                                                }} />
+                                            </div>
+
+                                            {/* Category badges */}
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                {MISI_CATEGORIES.map((cat, ci) => {
+                                                    const done = user.categoryStatus[ci];
+                                                    let detail = '';
+                                                    if (cat.id === 'hafalan') detail = `${user.hafalanDone}/${user.hafalanTotal}`;
+                                                    else if (cat.id === 'khatam') detail = user.isKhatam ? '✅' : `${Math.min(Math.round(user.quranAyat / TOTAL_QURAN_AYAT * 100), 99)}%`;
+                                                    else if (cat.id === 'lari') detail = `${user.lariDone}/${user.lariTotal}`;
+                                                    else if (cat.id === 'leadership') detail = user.leadershipCount > 0 ? `${user.leadershipCount}` : '-';
+                                                    else if (cat.id === 'daya_jelajah') detail = user.dayaJelajahCount > 0 ? `${user.dayaJelajahCount}` : '-';
+                                                    else if (cat.id === 'tulisan') detail = user.tulisanCount > 0 ? `${user.tulisanCount}` : '-';
+                                                    else detail = done ? '✅' : '—';
+                                                    return (
+                                                        <span key={cat.id} style={{
+                                                            fontSize: '10px', padding: '2px 6px',
+                                                            borderRadius: 'var(--radius-full)',
+                                                            background: done ? `${cat.color}20` : 'rgba(255,255,255,0.03)',
+                                                            color: done ? cat.color : 'var(--dark-500)',
+                                                            fontWeight: '600', whiteSpace: 'nowrap',
+                                                        }}>{cat.icon} {detail}</span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {misiData.length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: '30px', color: 'var(--dark-500)', fontSize: '13px' }}>
+                                        Belum ada data misi.
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
             )}
         </section>
     );

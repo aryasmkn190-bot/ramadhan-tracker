@@ -62,7 +62,7 @@ const SECTIONS = [
     { id: 'khatam', title: 'Khatam Al-Quran', icon: '🕌', color: '#fbbf24', desc: 'Khatamkan Al-Quran selama Ramadhan' },
     { id: 'buku', title: 'Membaca Buku Khusus', icon: '📚', color: '#8b5cf6', desc: 'Baca buku yang ditentukan' },
     { id: 'leadership', title: 'Leadership & Organisasi', icon: '🏛️', color: '#ec4899', desc: 'Dokumentasikan kegiatan kepemimpinan' },
-    { id: 'daya_jelajah', title: 'Daya Jelajah', icon: '🗺️', color: '#14b8a6', desc: 'Kunjungi kampus-kampus' },
+    { id: 'daya_jelajah', title: 'Daya Jelajah', icon: '🗺️', color: '#14b8a6', desc: 'Mengunjungi Kampus' },
     { id: 'tulisan', title: 'Menulis Hasil Pengamatan', icon: '✍️', color: '#f97316', desc: 'Upload karya tulis pengamatan' },
     { id: 'lari', title: 'Lari 2,5 KM', icon: '🏃', color: '#ef4444', desc: '3 kali lari di jam khusus Ramadhan' },
 ];
