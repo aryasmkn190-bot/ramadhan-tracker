@@ -6,42 +6,50 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 
 // ==================== MISSION DEFINITIONS ====================
+// Hafalan groups with individual ayat (can be checked one by one)
 const HAFALAN_GROUPS = [
     {
         label: 'Kelompok 1',
-        items: [
-            { id: 'hafalan_60_12', label: 'QS. Al-Mumtahanah (60:12)' },
-            { id: 'hafalan_61_1_14', label: 'QS. Ash-Shaff (61:1-14)' },
-            { id: 'hafalan_3_190_194', label: 'QS. Ali Imran (3:190-194)' },
+        surahs: [
+            { name: 'QS. Al-Mumtahanah', surah: 60, ayat: [12] },
+            { name: 'QS. Ash-Shaff', surah: 61, ayat: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] },
+            { name: 'QS. Ali Imran', surah: 3, ayat: [190, 191, 192, 193, 194] },
         ]
     },
     {
         label: 'Kelompok 2',
-        items: [
-            { id: 'hafalan_16_125', label: 'QS. An-Nahl (16:125)' },
-            { id: 'hafalan_3_104', label: 'QS. Ali Imran (3:104)' },
+        surahs: [
+            { name: 'QS. An-Nahl', surah: 16, ayat: [125] },
+            { name: 'QS. Ali Imran', surah: 3, ayat: [104] },
         ]
     },
     {
         label: 'Kelompok 3',
-        items: [
-            { id: 'hafalan_57_10', label: 'QS. Al-Hadid (57:10)' },
-            { id: 'hafalan_15_19_20', label: 'QS. Al-Hijr (15:19-20)' },
-            { id: 'hafalan_9_24', label: 'QS. At-Taubah (9:24)' },
-            { id: 'hafalan_20_117_119', label: 'QS. Thaha (20:117-119)' },
+        surahs: [
+            { name: 'QS. Al-Hadid', surah: 57, ayat: [10] },
+            { name: 'QS. Al-Hijr', surah: 15, ayat: [19, 20] },
+            { name: 'QS. At-Taubah', surah: 9, ayat: [24] },
+            { name: 'QS. Thaha', surah: 20, ayat: [117, 118, 119] },
         ]
     },
     {
         label: 'Kelompok 4',
-        items: [{ id: 'hafalan_24_36', label: 'QS. An-Nur (24:36)' }]
+        surahs: [
+            { name: 'QS. An-Nur', surah: 24, ayat: [36] },
+        ]
     },
     {
         label: 'Kelompok 5',
-        items: [{ id: 'hafalan_3_200', label: 'QS. Ali Imran (3:200)' }]
+        surahs: [
+            { name: 'QS. Ali Imran', surah: 3, ayat: [200] },
+        ]
     },
 ];
 
-const ALL_HAFALAN_IDS = HAFALAN_GROUPS.flatMap(g => g.items.map(i => i.id));
+// Generate all individual hafalan IDs
+const ALL_HAFALAN_IDS = HAFALAN_GROUPS.flatMap(g =>
+    g.surahs.flatMap(s => s.ayat.map(a => `hafalan_${s.surah}_${a}`))
+);
 const LARI_ITEMS = [
     { id: 'lari_1', label: 'Lari ke-1' },
     { id: 'lari_2', label: 'Lari ke-2' },
@@ -50,9 +58,8 @@ const LARI_ITEMS = [
 const LARI_TIME_SLOTS = ['07:00-08:00', '14:00-15:00', '16:00-17:00'];
 
 const SECTIONS = [
-    { id: 'hafalan', title: 'Hafalan Ayat Al-Quran', icon: '📖', color: '#10b981', desc: 'Setorkan hafalan surat yang ditentukan' },
+    { id: 'hafalan', title: 'Hafalan Ayat Al-Quran', icon: '📖', color: '#10b981', desc: 'Setorkan hafalan per ayat' },
     { id: 'khatam', title: 'Khatam Al-Quran', icon: '🕌', color: '#fbbf24', desc: 'Khatamkan Al-Quran selama Ramadhan' },
-    { id: 'amalan', title: 'Daftar Amalan Aktivis', icon: '📋', color: '#3b82f6', desc: 'Catat amalan yang dijalankan' },
     { id: 'buku', title: 'Membaca Buku Khusus', icon: '📚', color: '#8b5cf6', desc: 'Baca buku yang ditentukan' },
     { id: 'leadership', title: 'Leadership & Organisasi', icon: '🏛️', color: '#ec4899', desc: 'Dokumentasikan kegiatan kepemimpinan' },
     { id: 'daya_jelajah', title: 'Daya Jelajah', icon: '🗺️', color: '#14b8a6', desc: 'Kunjungi kampus-kampus' },
@@ -196,7 +203,6 @@ export default function MisiPage() {
     const [uploading, setUploading] = useState(false);
 
     // Form states
-    const [amalanForm, setAmalanForm] = useState({ nama: '', tanggal: todayStr() });
     const [leadershipForm, setLeadershipForm] = useState({ nama: '', tanggal: todayStr() });
     const [dayaJelajahForm, setDayaJelajahForm] = useState({ kampus: '', tanggal: todayStr() });
     const fileInputRef = useRef(null);
@@ -318,18 +324,6 @@ export default function MisiPage() {
     };
 
     // ==================== MULTI-ENTRY HANDLERS ====================
-    const addAmalan = async () => {
-        if (!amalanForm.nama.trim()) { addToast('Nama amalan harus diisi', 'error'); return; }
-        try {
-            await insertMission('amalan', {
-                completed: true,
-                completion_date: amalanForm.tanggal,
-                data: { nama: amalanForm.nama.trim() },
-            });
-            setAmalanForm({ nama: '', tanggal: todayStr() });
-            addToast('✅ Amalan ditambahkan!', 'success');
-        } catch (e) { addToast('Gagal menambahkan amalan.', 'error'); }
-    };
 
     const addLeadership = async (photoFile) => {
         if (!leadershipForm.nama.trim()) { addToast('Nama kegiatan harus diisi', 'error'); return; }
@@ -432,23 +426,22 @@ export default function MisiPage() {
     const getProgress = () => {
         const hafalanDone = ALL_HAFALAN_IDS.filter(id => getMission(id)?.completed).length;
         const khatamDone = getMission('khatam')?.completed ? 1 : 0;
-        const amalanDone = getMultiMissions('amalan').length > 0 ? 1 : 0;
         const bukuDone = getMission('buku')?.completed ? 1 : 0;
         const leadershipDone = getMultiMissions('leadership').length > 0 ? 1 : 0;
         const dayaJelajahDone = getMultiMissions('daya_jelajah').length > 0 ? 1 : 0;
         const tulisanDone = getMultiMissions('tulisan').length > 0 ? 1 : 0;
         const lariDone = LARI_ITEMS.filter(l => getMission(l.id)?.completed).length;
 
-        const totalCategories = 8;
+        const totalCategories = 7;
         const completedCategories = [
             hafalanDone === ALL_HAFALAN_IDS.length,
-            khatamDone, amalanDone, bukuDone,
+            khatamDone, bukuDone,
             leadershipDone, dayaJelajahDone, tulisanDone,
             lariDone === 3,
         ].filter(Boolean).length;
 
         return {
-            hafalanDone, khatamDone, amalanDone, bukuDone,
+            hafalanDone, khatamDone, bukuDone,
             leadershipDone, dayaJelajahDone, tulisanDone, lariDone,
             completedCategories, totalCategories,
             percentage: Math.round((completedCategories / totalCategories) * 100),
@@ -462,7 +455,6 @@ export default function MisiPage() {
                 return `${done}/${ALL_HAFALAN_IDS.length}`;
             }
             case 'khatam': return getMission('khatam')?.completed ? '✅' : '—';
-            case 'amalan': { const c = getMultiMissions('amalan').length; return c > 0 ? `${c} amalan` : '—'; }
             case 'buku': return getMission('buku')?.completed ? '✅' : '—';
             case 'leadership': { const c = getMultiMissions('leadership').length; return c > 0 ? `${c} kegiatan` : '—'; }
             case 'daya_jelajah': { const c = getMultiMissions('daya_jelajah').length; return c > 0 ? `${c} kampus` : '—'; }
@@ -509,51 +501,88 @@ export default function MisiPage() {
 
     const renderHafalanSection = () => (
         <div style={{ padding: '4px 0' }}>
-            {HAFALAN_GROUPS.map((group, gi) => (
-                <div key={gi} style={{ marginBottom: '16px' }}>
-                    <div style={{
-                        fontSize: '11px', fontWeight: '700', color: '#10b981',
-                        textTransform: 'uppercase', letterSpacing: '1px',
-                        padding: '0 16px', marginBottom: '8px',
-                    }}>{group.label}</div>
-                    {group.items.map(item => {
-                        const m = getMission(item.id);
-                        const completed = m?.completed;
-                        return (
-                            <div key={item.id} style={{
-                                padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px',
-                                background: completed ? 'rgba(16,185,129,0.08)' : 'transparent',
-                                borderBottom: '1px solid rgba(255,255,255,0.03)',
-                            }}>
-                                <button onClick={() => toggleHafalanItem(item.id)} style={{
-                                    width: '24px', height: '24px', borderRadius: 'var(--radius-full)',
-                                    border: completed ? 'none' : '2px solid var(--dark-500)',
-                                    background: completed ? 'var(--primary-gradient)' : 'transparent',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    transition: 'all 0.3s ease', flexShrink: 0,
-                                }}>
-                                    {completed && <span style={{ color: 'white', fontSize: '12px' }}>✓</span>}
-                                </button>
-                                <span style={{
-                                    flex: 1, fontSize: '13px', fontWeight: '500',
-                                    color: completed ? 'var(--dark-200)' : 'var(--dark-300)',
-                                    textDecoration: completed ? 'line-through' : 'none',
-                                }}>{item.label}</span>
-                                <input type="date" value={m?.completion_date || ''}
-                                    onChange={(e) => {
-                                        if (completed) updateHafalanDate(item.id, e.target.value);
-                                        else toggleHafalanItem(item.id, e.target.value);
-                                    }}
-                                    style={{
-                                        ...inputStyle, width: '140px', padding: '6px 8px', fontSize: '12px',
-                                        background: 'var(--dark-800)', border: '1px solid var(--dark-600)',
-                                    }}
-                                />
-                            </div>
-                        );
-                    })}
-                </div>
-            ))}
+            {HAFALAN_GROUPS.map((group, gi) => {
+                // Count completed ayat in this group
+                const groupAyatIds = group.surahs.flatMap(s => s.ayat.map(a => `hafalan_${s.surah}_${a}`));
+                const groupDone = groupAyatIds.filter(id => getMission(id)?.completed).length;
+                return (
+                    <div key={gi} style={{ marginBottom: '20px' }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '0 16px', marginBottom: '10px',
+                        }}>
+                            <span style={{
+                                fontSize: '11px', fontWeight: '700', color: '#10b981',
+                                textTransform: 'uppercase', letterSpacing: '1px',
+                            }}>{group.label}</span>
+                            <span style={{
+                                fontSize: '11px', fontWeight: '600',
+                                color: groupDone === groupAyatIds.length ? '#10b981' : 'var(--dark-400)',
+                                background: groupDone === groupAyatIds.length ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
+                                padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                            }}>{groupDone}/{groupAyatIds.length}</span>
+                        </div>
+                        {group.surahs.map((surah, si) => {
+                            const surahAyatIds = surah.ayat.map(a => `hafalan_${surah.surah}_${a}`);
+                            const surahDone = surahAyatIds.filter(id => getMission(id)?.completed).length;
+                            return (
+                                <div key={si} style={{ marginBottom: '8px' }}>
+                                    {/* Surah header */}
+                                    <div style={{
+                                        padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        background: 'rgba(16,185,129,0.04)',
+                                    }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--dark-200)' }}>
+                                            {surah.name} ({surah.surah})
+                                        </span>
+                                        <span style={{ fontSize: '10px', color: surahDone === surah.ayat.length ? '#10b981' : 'var(--dark-400)' }}>
+                                            {surahDone}/{surah.ayat.length} ayat
+                                        </span>
+                                    </div>
+                                    {/* Individual ayat */}
+                                    {surah.ayat.map(ayatNum => {
+                                        const itemId = `hafalan_${surah.surah}_${ayatNum}`;
+                                        const m = getMission(itemId);
+                                        const completed = m?.completed;
+                                        return (
+                                            <div key={itemId} style={{
+                                                padding: '8px 16px 8px 28px', display: 'flex', alignItems: 'center', gap: '10px',
+                                                background: completed ? 'rgba(16,185,129,0.06)' : 'transparent',
+                                                borderBottom: '1px solid rgba(255,255,255,0.02)',
+                                            }}>
+                                                <button onClick={() => toggleHafalanItem(itemId)} style={{
+                                                    width: '22px', height: '22px', borderRadius: 'var(--radius-full)',
+                                                    border: completed ? 'none' : '2px solid var(--dark-500)',
+                                                    background: completed ? 'var(--primary-gradient)' : 'transparent',
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    transition: 'all 0.3s ease', flexShrink: 0,
+                                                }}>
+                                                    {completed && <span style={{ color: 'white', fontSize: '11px' }}>✓</span>}
+                                                </button>
+                                                <span style={{
+                                                    flex: 1, fontSize: '13px', fontWeight: '500',
+                                                    color: completed ? 'var(--dark-200)' : 'var(--dark-300)',
+                                                    textDecoration: completed ? 'line-through' : 'none',
+                                                }}>Ayat {ayatNum}</span>
+                                                <input type="date" value={m?.completion_date || ''}
+                                                    onChange={(e) => {
+                                                        if (completed) updateHafalanDate(itemId, e.target.value);
+                                                        else toggleHafalanItem(itemId, e.target.value);
+                                                    }}
+                                                    style={{
+                                                        ...inputStyle, width: '130px', padding: '5px 6px', fontSize: '11px',
+                                                        background: 'var(--dark-800)', border: '1px solid var(--dark-600)',
+                                                    }}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            })}
         </div>
     );
 
@@ -666,21 +695,7 @@ export default function MisiPage() {
             case 'khatam': return (
                 <div style={{ padding: '16px' }}>{renderCheckItem('khatam', 'Khatam Al-Quran 30 Juz', color)}</div>
             );
-            case 'amalan': return (
-                <>
-                    {renderMultiEntries('amalan', getMultiMissions('amalan'), ['nama'], color)}
-                    <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <input placeholder="Nama amalan..." value={amalanForm.nama}
-                            onChange={e => setAmalanForm(p => ({ ...p, nama: e.target.value }))} style={inputStyle} />
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input type="date" value={amalanForm.tanggal}
-                                onChange={e => setAmalanForm(p => ({ ...p, tanggal: e.target.value }))}
-                                style={{ ...inputStyle, flex: 1 }} />
-                            <button onClick={addAmalan} style={smallBtnStyle(color)}>+ Tambah</button>
-                        </div>
-                    </div>
-                </>
-            );
+
             case 'buku': return (
                 <div style={{ padding: '16px' }}>{renderCheckItem('buku', 'Membaca Buku Khusus', color)}</div>
             );
